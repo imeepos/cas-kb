@@ -13,6 +13,8 @@
 # GC 分支表备份(e2e/运维产物,不入库)
 /branches-backup-*.json
 
-# 库备份(backup.sh 产物,只留本地/归档,不入仓)
+# 库备份(backup.sh / kb backup 产物,只留本地/归档,不入仓)
 /backups/
 /caskb-*-backup-*.sql
+# kb backup 的 .ckb 快照产物会落在运行时的 cwd,全目录忽略
+*.ckb
