@@ -22,6 +22,12 @@ func main() {
 		must(cmdLog(ctx, os.Args[2:]))
 	case "diff":
 		must(cmdDiff(ctx, os.Args[2:]))
+	case "pull":
+		must(cmdPull(ctx, os.Args[2:]))
+	case "gc":
+		must(cmdGC(ctx, os.Args[2:]))
+	case "fsck":
+		must(cmdFSCK(ctx, os.Args[2:]))
 	case "help":
 		usage()
 	default:
