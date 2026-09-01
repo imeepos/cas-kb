@@ -79,6 +79,8 @@
     ./scripts/verify.sh                                  # 单一质量门禁:gofmt/构建/vet/单元/(可选)集成
     KB_TEST_DSN=postgres://... ./scripts/verify.sh       # 设置后追加集成测试;每个用例派生独立临时库
     ./scripts/e2e.sh                                     # 端到端验收:临时目录+临时库跑完整生命周期
+    ./scripts/backup.sh [DSN]                            # 库备份 → backups/(git 忽略),文件名含库版本与时间戳
+    ./scripts/restore.sh <backup.sql> <目标库>           # 恢复到全新库;旧 schema 备份会提示配套二进制
 
 > 提示:仓库根目录的 `kb` 二进制不会随源码自动更新,`git pull` 后执行 `go build -o kb ./cmd/kb` 重建;`./kb --help` / `-h` 随时查看当前用法。
 

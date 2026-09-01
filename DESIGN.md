@@ -236,9 +236,12 @@ cas-kb/
 指向 102 的示例:`postgres://caskb_app:<密码>@192.168.x.102:5432/caskb?sslmode=disable`。
 安全要求:专用账号 `caskb_app`(只授 caskb 库权限)、密码走 scram-sha-256、内网传输是否启用 TLS 按内网策略定;**凭据一律走环境变量,不入库不入仓**。
 
-### 8.3 备份与恢复
+### 8.3 备份与恢复(正规化)
 
-- 逻辑备份:pg_dump(含 objects/branches/meta)即可完整恢复
+- **备份统一入口** `./scripts/backup.sh [DSN]`:pg_dump 逻辑备份(含 objects/projects/branches/meta),产物固定写 `backups/`(git 忽略),文件名 `caskb-v<库版本>-backup-<时间戳>.sql` 并附 sha256——版本号进文件名,恢复时可识别配套的 kb 二进制
+- **恢复统一入口** `./scripts/restore.sh <backup.sql> <目标库>`:导入**全新库**(先删后建);备份属于旧 schema 时打印提醒(v4 门禁会拒绝旧库,需用对应版本的 kb 二进制访问)
+- **迁移口径**:不做自动迁移(库版本不符拒绝打开)。官方升级路径 = backup.sh 留档 → 清空/删库 → `kb init` 重建 → 数据按需重录或写一次性迁移工具;`meta 表存在但无版本行`(清空后)等价全新库放行
+- **硬性约定**:对含数据的存量库做任何迁移/升级验证前,必须先 backup.sh(或 pg_dump)备份,文件名含库版本与时间戳
 - branches 表极小可高频快照;objects 只增,增量备份友好
 - 恢复后先跑 fsck 再提供服务
 
