@@ -54,7 +54,7 @@ func main() {
 		must(cmdProject(ctx, args[1:]))
 	case "branch":
 		must(cmdBranch(ctx, args[1:]))
-	case "help":
+	case "help", "--help", "-h":
 		usage()
 	default:
 		fmt.Fprintf(os.Stderr, "kb: 未知命令 %q\n", args[0])
