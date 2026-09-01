@@ -2,10 +2,12 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/imeepos/cas-kb/internal/object"
 	"github.com/imeepos/cas-kb/internal/repo"
+	"github.com/imeepos/cas-kb/internal/store"
 )
 
 // cmdDir 分发 dir 子命令。
@@ -26,7 +28,7 @@ func cmdDir(ctx context.Context, args []string) error {
 	case "rm":
 		return dirRm(ctx, r, args[1:])
 	case "tree":
-		return dirTree(ctx, r, args[1:])
+		return dirTree(ctx, r, s, args[1:])
 	default:
 		return fmt.Errorf("dir: 未知子命令 %q", args[0])
 	}
@@ -125,7 +127,9 @@ func dirRm(ctx context.Context, r *repo.Repo, args []string) error {
 }
 
 // dirTree 输出目录层级树(note 附标题)。
-func dirTree(ctx context.Context, r *repo.Repo, args []string) error {
+// 未显式指定项目(-p/KB_PROJECT 均未设置)且未给路径时,渲染全库视图:
+// (root)/ 下项目为顶层节点(M3.11,DESIGN §4.6);显式指定项目保持单项目树。
+func dirTree(ctx context.Context, r *repo.Repo, s store.Store, args []string) error {
 	f, err := parseFlags(args, nil)
 	if err != nil {
 		return err
@@ -133,6 +137,9 @@ func dirTree(ctx context.Context, r *repo.Repo, args []string) error {
 	path := ""
 	if len(f.pos) >= 1 {
 		path = f.pos[0]
+	}
+	if path == "" && !projectExplicitlySet() {
+		return dirTreeAll(ctx, s)
 	}
 	node, err := r.DirTree(ctx, path)
 	if err != nil {
@@ -144,6 +151,36 @@ func dirTree(ctx context.Context, r *repo.Repo, args []string) error {
 	}
 	fmt.Println(name + "/")
 	renderTree(node.Children, "")
+	return nil
+}
+
+// dirTreeAll 全库视图:项目清单作为 (root)/ 的顶层,逐项目渲染其默认分支树。
+func dirTreeAll(ctx context.Context, s store.Store) error {
+	stats, err := s.ProjectStats(ctx)
+	if err != nil {
+		return err
+	}
+	fmt.Println("(root)/")
+	for i, st := range stats {
+		branch, next := "├── ", "│   "
+		if i == len(stats)-1 {
+			branch, next = "└── ", "    "
+		}
+		fmt.Printf("%s%s/\n", branch, st.Project)
+		if _, err := s.BranchGet(ctx, st.Project, branchName()); err != nil {
+			if !errors.Is(err, store.ErrBranchNotFound) {
+				return err
+			}
+			fmt.Printf("%s└── (空)\n", next)
+			continue
+		}
+		pr := repo.Open(s, repo.Config{Project: st.Project, Branch: branchName()})
+		node, err := pr.DirTree(ctx, "")
+		if err != nil {
+			return err
+		}
+		renderTree(node.Children, next)
+	}
 	return nil
 }
 

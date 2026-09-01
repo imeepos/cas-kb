@@ -23,6 +23,12 @@ func projectName() string {
 	return "default"
 }
 
+// projectExplicitlySet 报告用户是否显式选择了项目(-p 或 KB_PROJECT)。
+// dir tree 用它区分「默认作用域」与「全库视图」(M3.11)。
+func projectExplicitlySet() bool {
+	return projectOverride != "" || os.Getenv("KB_PROJECT") != ""
+}
+
 // branchName 返回默认分支名(KB_BRANCH,默认 main)。
 func branchName() string {
 	if b := os.Getenv("KB_BRANCH"); b != "" {

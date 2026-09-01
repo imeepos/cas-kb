@@ -56,7 +56,9 @@ func TestDirLifecycleCLI(t *testing.T) {
 		t.Fatalf("dir ls --json 契约不符: %q", out)
 	}
 
-	// dir tree 层级视图
+	// dir tree 层级视图(显式项目作用域;全库视图见 dir_tree_global_test.go)
+	projectOverride = "default"
+	defer func() { projectOverride = "" }()
 	out, err = captureStdout(t, func() error { return cmdDir(ctx, []string{"tree"}) })
 	if err != nil {
 		t.Fatal(err)

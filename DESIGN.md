@@ -115,6 +115,7 @@
 - **条目层**:note 对象格式不动(地址稳定优先)。AI 粗筛所需摘要由展示层从标题/标签/正文首段**派生**(`kb note ls` 的 JSON 输出),不改对象编码;把 description 写进 note JSON 属对象格式变更,列为演进项,须升级 object.SchemaVersion 并清库重建。
 - **发现出口**:`kb project ls --json` / `kb branch ls --json` 输出含描述的机器可读清单,AI 一次调用完成选用。
 - **输出契约**:机器消费一律走 `--json`(字段名与结构即契约,调整须在本文档与 ROADMAP 显式记录);文本输出面向人,列格式可能随版本调整——v3 起 `project ls` 文本为「名称/分支数/描述」三列,空描述显示「(未设置)」占位。惯例依据:clig.dev(人类输出为人调优、机器输出走稳定 stdout 通道)与 arduino-cli 向后兼容政策(输出格式变更视为破坏性变更,须显式声明)。v4 起契约变化:`note ls --json` 每行新增 `path` 字段(`slug` 保留为路径叶段);`note get` 文本首列由 `slug:` 改为 `path:`;`diff` 文本与结构化输出的条目键由 slug 改为全路径;新增 `dir ls --json`(每项 name/type/title)。
+- **全库树视图(M3.11 增量)**:`kb dir tree` 未显式指定项目(`-p`/`KB_PROJECT` 均未设置)且未给路径参数时,渲染全库文本视图:`(root)/` 下项目为顶层节点,逐项目挂其默认分支(`KB_BRANCH`)的树,无分支的空项目显示 (空);显式指定项目后保持单项目树不变。文本视图面向人;机器消费仍走 `kb project ls --json` 与 `kb note ls --json`。
 
 ### 4.7 目录层级(schema v4)
 
