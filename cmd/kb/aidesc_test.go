@@ -91,3 +91,19 @@ func TestM37NoteLsJSONSummary(t *testing.T) {
 		t.Fatalf("应为合法 JSON: %v", err)
 	}
 }
+
+// M3.7 回补:--desc 旗标与 desc 文本路径统一 TrimSpace。
+func TestM37DescTrimUnify(t *testing.T) {
+	ctx := context.Background()
+	initRepo(t)
+	if err := cmdProject(ctx, []string{"create", "tt", "--desc", "  环绕空格  "}); err != nil {
+		t.Fatal(err)
+	}
+	out, err := captureStdout(t, func() error { return cmdProject(ctx, []string{"desc", "tt"}) })
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out != "环绕空格\n" {
+		t.Fatalf("desc 应存储去空格后的值,得到 %q", out)
+	}
+}
