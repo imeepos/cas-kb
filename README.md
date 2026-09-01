@@ -45,6 +45,17 @@
     KB_TEST_DSN=postgres://... ./scripts/verify.sh       # 设置后追加集成测试;每个用例派生独立临时库
     ./scripts/e2e.sh                                     # 端到端验收:临时目录+临时库跑完整生命周期
 
+## 构建发布
+
+推送 `v*` 标签即自动走 GitHub Actions(`.github/workflows/release.yml`)发布:
+
+    git tag v0.1.0 && git push origin v0.1.0
+
+流水线三步:**质量门禁**(`verify.sh` 含集成测试 + `e2e.sh`,自带 postgres:16 服务)→
+**交叉编译**(linux / darwin / windows × amd64 / arm64,CGO 关闭的静态二进制,
+产物 `kb-<版本>-<os>-<arch>` 归档)→ **创建 GitHub Release**(自动生成更新说明,
+附 `sha256sums.txt`)。Actions 页也支持手动 `workflow_dispatch` 试跑(只构建、不发布)。
+
 ## 环境假设
 
 | 项 | 值 |
