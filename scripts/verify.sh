@@ -2,6 +2,11 @@
 # cas-kb 单一质量门禁:格式 → 构建 → vet → 单元测试 →(可选)集成测试。
 # CI 只需调用本脚本;本地开发同样以它为准。
 set -euo pipefail
+# Homebrew 工具(psql/pg_dump/go/gofmt)可能不在非交互 shell 的 PATH 里,逐个补齐
+for _d in /opt/homebrew/bin /usr/local/bin /usr/local/go/bin; do
+  [ -d "$_d" ] && PATH="$_d:$PATH"
+done
+export PATH
 cd "$(dirname "$0")/.."
 
 UNFMT=$(gofmt -l .)

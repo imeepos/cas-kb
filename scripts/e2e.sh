@@ -2,6 +2,11 @@
 # cas-kb 端到端验收:临时目录 + 临时库,跑完整生命周期;产物不入库。
 # 用法:./scripts/e2e.sh [基库 DSN](默认取 KB_DSN,再退回本地 5432/caskb)
 set -euo pipefail
+# Homebrew 工具(psql/pg_dump/go/gofmt)可能不在非交互 shell 的 PATH 里,逐个补齐
+for _d in /opt/homebrew/bin /usr/local/bin /usr/local/go/bin; do
+  [ -d "$_d" ] && PATH="$_d:$PATH"
+done
+export PATH
 cd "$(dirname "$0")/.."
 BASE_DSN="${1:-${KB_DSN:-postgres://postgres:postgres@127.0.0.1:5432/caskb?sslmode=disable}}"
 ADMIN_DSN="${BASE_DSN%/*}/postgres"
