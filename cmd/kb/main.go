@@ -46,6 +46,8 @@ func main() {
 		must(cmdGC(ctx, args[1:]))
 	case "fsck":
 		must(cmdFSCK(ctx, args[1:]))
+	case "reset":
+		must(cmdReset(ctx, args[1:]))
 	case "project":
 		must(cmdProject(ctx, args[1:]))
 	case "help":

@@ -8,7 +8,7 @@ func usage() {
 		"  kb [-p 项目] <命令> …   # 项目作用域;亦可用 KB_PROJECT(默认 default)\n" +
 		"  kb init\n" +
 		"  kb note set <slug> [--title T] [--body B] [--tags a,b] [-m msg]\n" +
-		"  kb note get <slug>\n" +
+		"  kb note get <slug> [--at 快照]\n" +
 		"  kb note rm <slug> [-m msg]\n" +
 		"  kb note ls\n" +
 		"  kb log\n" +
@@ -16,6 +16,7 @@ func usage() {
 		"  kb pull [remoteDsn] [--force]\n" +
 		"  kb gc\n" +
 		"  kb fsck\n" +
+		"  kb reset <分支名|地址|短标识>  # 回退分支指针,放弃其后修改\n" +
 		"  kb project ls|create <名称>\n\n" +
 		"环境变量:\n" +
 		"  KB_DSN       本地连接串(默认 postgres://postgres:postgres@127.0.0.1:5432/caskb)\n" +

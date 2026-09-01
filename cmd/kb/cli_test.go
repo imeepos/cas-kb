@@ -172,3 +172,63 @@ func TestProjectScopeCLI(t *testing.T) {
 		t.Fatalf("project ls 应含项目与分支数统计,got %q", out)
 	}
 }
+
+func TestResetCLI(t *testing.T) {
+	ctx := context.Background()
+	initRepo(t)
+	setNote(t, "a", "A1")
+	setNote(t, "b", "B")
+	setNote(t, "c", "C")
+	out, err := captureStdout(t, func() error { return cmdLog(ctx, nil) })
+	if err != nil {
+		t.Fatal(err)
+	}
+	lines := strings.Split(strings.TrimSpace(out), "\n")
+	firstShort := strings.Fields(lines[len(lines)-1])[0] // 最早快照
+	if err := cmdReset(ctx, []string{firstShort}); err != nil {
+		t.Fatal(err)
+	}
+	out, err = captureStdout(t, func() error { return cmdLog(ctx, nil) })
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Count(strings.TrimSpace(out), "\n") != 0 {
+		t.Fatalf("回退后 log 应只剩 1 条,got %q", out)
+	}
+	out, err = captureStdout(t, func() error { return cmdNote(ctx, []string{"ls"}) })
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(out, "b") || strings.Contains(out, "c") {
+		t.Fatalf("被放弃条目不应出现在 ls: %q", out)
+	}
+}
+
+func TestNoteGetAtSnapshot(t *testing.T) {
+	ctx := context.Background()
+	initRepo(t)
+	setNote(t, "a", "A1")
+	out, err := captureStdout(t, func() error { return cmdLog(ctx, nil) })
+	if err != nil {
+		t.Fatal(err)
+	}
+	s1 := strings.Fields(strings.Split(strings.TrimSpace(out), "\n")[0])[0]
+	setNote(t, "a", "A2")
+	out, err = captureStdout(t, func() error { return cmdNote(ctx, []string{"get", "a"}) })
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, "A2") {
+		t.Fatalf("当前内容应为 A2: %q", out)
+	}
+	out, err = captureStdout(t, func() error { return cmdNote(ctx, []string{"get", "a", "--at", s1}) })
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, "A1") {
+		t.Fatalf("--at 应读旧版本 A1: %q", out)
+	}
+	if err := cmdNote(ctx, []string{"get", "ghost", "--at", s1}); err == nil {
+		t.Fatal("--at 下不存在的 slug 应报错")
+	}
+}
