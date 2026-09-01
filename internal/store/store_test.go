@@ -2,24 +2,17 @@ package store
 
 import (
 	"context"
-	"os"
 	"testing"
 
 	"github.com/imeepos/cas-kb/internal/hash"
 	"github.com/imeepos/cas-kb/internal/object"
+	"github.com/imeepos/cas-kb/internal/testdb"
 )
 
-func testDSN(t *testing.T) string {
-	dsn := os.Getenv("KB_TEST_DSN")
-	if dsn == "" {
-		t.Skip("KB_TEST_DSN 未设置,跳过集成测试")
-	}
-	return dsn
-}
-
+// openTest 打开一个独立测试库(每个用例独立新库)。
 func openTest(t *testing.T) *PG {
 	ctx := context.Background()
-	s, err := Open(ctx, testDSN(t))
+	s, err := Open(ctx, testdb.New(t))
 	if err != nil {
 		t.Fatalf("打开存储失败: %v", err)
 	}
@@ -108,8 +101,12 @@ func TestM1_TamperDetectable(t *testing.T) {
 
 func TestM1_SchemaVersionMismatchRejects(t *testing.T) {
 	ctx := context.Background()
-	dsn := testDSN(t)
-	s := openTest(t)
+	dsn := testdb.New(t)
+	s, err := Open(ctx, dsn)
+	if err != nil {
+		t.Fatalf("打开存储失败: %v", err)
+	}
+	t.Cleanup(func() { s.Close() })
 	if _, err := s.pool.Exec(ctx, "UPDATE meta SET value = '999' WHERE key = 'schema_version'"); err != nil {
 		t.Fatal(err)
 	}
