@@ -87,7 +87,7 @@
 - `dir rm` 非空目录拒绝,`--force` 递归删除;旧快照时间旅行不受影响;reset 放弃历史后 GC 清扫被删子树且 fsck 通过
 - diff 按全路径输出;目录间移动表现为旧路径 removed + 新路径 added 且地址不变(内容寻址)
 - 输出契约变化已记录(DESIGN §4.6):`note ls --json` 新增 path、`note get` 输出 path、diff 键为全路径、新增 `dir ls --json`
-- 文档三处同步:schema.sql v4、DESIGN §2/§3/§4.1/§4.6/§5.1/§6.1/§6.5、本节
+- 文档三处同步:schema.sql v4、DESIGN §2/§3/§4.1/§4.6/§4.7/§5.1/§6.1/§6.4/§6.5、本节
 
 **状态**:已交付(嵌套路径模型、目录操作与 CLI、diff/GC/FSCK 适配、schema v4 门禁、单元 + 集成测试全绿)。
 

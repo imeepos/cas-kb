@@ -74,9 +74,10 @@
 四张表(完整 DDL 见 [schema.sql](schema.sql)):
 
 - **objects** — `addr(text PK), kind, size, data(bytea)`;只增不删(仅 GC 清扫);全局共享、跨项目去重
-- **projects** — `name(text PK), description, created_at`;项目隔离的一等实体(schema v2 新增,v3 加描述列)
+- **projects** — `name(text PK), created_at, description`;项目隔离的一等实体(schema v2 新增,v3 加描述列)
 - **branches** — `(project, name)(复合主键), addr(→ objects), updated_at, description`;**可变命名空间表(指针+描述)**,按项目划分命名空间
 - **meta** — `schema_version` 等键值;加载时版本不符直接拒绝(误配置报错要响)
+- 辅助索引:`objects(kind)`、`branches(project)`(schema.sql 尾部;规模小可不建)
 
 > 版本约定:库 schema 版本(meta.schema_version,当前 4)与对象编码版本(object.SchemaVersion,note 内嵌,当前 1)相互独立;v2 仅动表结构,v3 仅加描述列,v4 仅演进 tree 对象编码(带类型条目,表结构不变)——note/snapshot 编码与地址规则始终不变。
 
@@ -115,7 +116,15 @@
 - **发现出口**:`kb project ls --json` / `kb branch ls --json` 输出含描述的机器可读清单,AI 一次调用完成选用。
 - **输出契约**:机器消费一律走 `--json`(字段名与结构即契约,调整须在本文档与 ROADMAP 显式记录);文本输出面向人,列格式可能随版本调整——v3 起 `project ls` 文本为「名称/分支数/描述」三列,空描述显示「(未设置)」占位。惯例依据:clig.dev(人类输出为人调优、机器输出走稳定 stdout 通道)与 arduino-cli 向后兼容政策(输出格式变更视为破坏性变更,须显式声明)。v4 起契约变化:`note ls --json` 每行新增 `path` 字段(`slug` 保留为路径叶段);`note get` 文本首列由 `slug:` 改为 `path:`;`diff` 文本与结构化输出的条目键由 slug 改为全路径;新增 `dir ls --json`(每项 name/type/title)。
 
-## 5. Go 工程结构(M1–M3.6 按此结构实现)
+### 4.7 目录层级(schema v4)
+
+- **表结构不变**:v4 只演进 tree 对象编码(entries 从 slug→note 升级为 slug+type,dir 条目指向子 tree,见 §3.3);四张表 DDL 与索引与 v3 逐字节一致
+- **整库门禁升至 4**:v3 旧格式 tree 字节(条目无 type)无法通过 v4 解码,实现侧在 DecodeTree 处响亮拒绝;存量库打开时照例拒绝并指引清库重建,不做自动迁移
+- **路径定位**:条目按全路径(目录链 + slug)读写,写路径沿目录链 copy-on-write(§6.1);同目录内 slug 唯一,条目与目录天然不同名
+- **空目录合法**:空 entries 树沿父链可达,GC 不回收;删除目录下的最后一条目不连带删目录
+- **引用一致性**:fsck 校验 tree 条目类型与目标对象 kind 一致(type=note → note 对象,type=dir → tree 对象)
+
+## 5. Go 工程结构(M1–M3.8 按此结构实现)
 
 ```
 cas-kb/
@@ -177,7 +186,7 @@ cas-kb/
 
 ### 6.4 GC(标记-清扫)
 
-- 从**所有项目**的全部分支头出发做可达性标记(snapshot → tree → note → blob,parents 递归);对象共享,禁止按项目清扫
+- 从**所有项目**的全部分支头出发做可达性标记(snapshot → tree(含 type=dir 子目录树,递归)→ note → blob,parents 递归);对象共享,禁止按项目清扫
 - 未标记对象删除并计数
 - 误删保护:GC 清扫前自动导出分支表为 JSON 备份文件(配置项 KB_GC_PROTECT,默认 on;备份失败则中止 GC);MVP 不做 reflog
 - 保护分层:CLI 默认开启;repo 库层默认关闭,由调用方显式开启;备份文件不自动清理,由运维按保留策略归档或删除
