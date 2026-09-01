@@ -11,7 +11,7 @@ func usage() {
 		"  kb note rm <slug> [-m msg]\n" +
 		"  kb note ls\n" +
 		"  kb log\n" +
-		"  kb diff <base> <tip>\n" +
+		"  kb diff <base> <tip>     # base/tip 可为分支名、地址或短标识(kb log 首列)\n" +
 		"  kb pull [remoteDsn] [--force]\n" +
 		"  kb gc\n" +
 		"  kb fsck\n\n" +
