@@ -65,7 +65,7 @@ func (r *Repo) Resolve(ctx context.Context, name string) (hash.Address, error) {
 		}
 		return r.resolveByPrefix(ctx, name)
 	}
-	branches, err := r.st.BranchList(ctx)
+	branches, err := r.st.BranchList(ctx, r.project)
 	if err != nil {
 		return "", err
 	}

@@ -21,7 +21,7 @@ func setupBranches(t *testing.T) (*Repo, hash.Address, hash.Address) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := s.BranchSet(ctx, "br_dev", c1); err != nil {
+	if err := s.BranchSet(ctx, "default", "br_dev", c1); err != nil {
 		t.Fatal(err)
 	}
 	return r, c1, c2

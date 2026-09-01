@@ -22,7 +22,7 @@ var ErrDiverge = errors.New("repo: 本地与远端已分叉,拒绝快进")
 
 // Pull 把远端分支的可达对象同步到本地并据祖先关系推进分支。
 func (r *Repo) Pull(ctx context.Context, src store.Store, srcBranch string, force bool) (PullResult, error) {
-	remoteHead, err := src.BranchGet(ctx, srcBranch)
+	remoteHead, err := src.BranchGet(ctx, r.project, srcBranch)
 	if err != nil {
 		return PullResult{}, fmt.Errorf("repo: 远端分支 %q: %w", srcBranch, err)
 	}
@@ -48,7 +48,7 @@ func (r *Repo) Pull(ctx context.Context, src store.Store, srcBranch string, forc
 		return res, ErrDiverge
 	}
 	res.FastForward = ancestor
-	if err := r.st.BranchSet(ctx, r.branch, remoteHead); err != nil {
+	if err := r.st.BranchSet(ctx, r.project, r.branch, remoteHead); err != nil {
 		return PullResult{}, err
 	}
 	return res, nil
