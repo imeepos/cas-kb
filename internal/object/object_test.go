@@ -7,9 +7,9 @@ import (
 
 func sampleNote() *Note {
 	return &Note{
-		Kind: KindNote,
-		Meta: Meta{Title: "标题", Tags: []string{"z", "a", "m"}, CreatedAt: 1700000000, SchemaVersion: SchemaVersion},
-		Body: Sum([]byte("body")),
+		Kind:  KindNote,
+		Meta:  Meta{Title: "标题", Tags: []string{"z", "a", "m"}, CreatedAt: 1700000000, SchemaVersion: SchemaVersion},
+		Body:  Sum([]byte("body")),
 		Links: []Link{{Slug: "b", Rel: "related"}, {Slug: "a"}},
 	}
 }
