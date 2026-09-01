@@ -169,7 +169,7 @@ func (r *Repo) commitTree(ctx context.Context, t *object.Tree, msg string, hasHe
 	if err != nil {
 		return "", err
 	}
-	if err := r.st.BranchSet(ctx, r.branch, snapAddr); err != nil {
+	if err := r.st.BranchSet(ctx, r.project, r.branch, snapAddr); err != nil {
 		return "", err
 	}
 	return snapAddr, nil

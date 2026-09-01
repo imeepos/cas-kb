@@ -26,7 +26,7 @@ func seedRemoteFastForward(t *testing.T) (*Repo, *store.PG, *Repo) {
 func TestM3_PullFastForward(t *testing.T) {
 	ctx := context.Background()
 	local, remote, _ := seedRemoteFastForward(t)
-	res, err := local.Pull(ctx, remote, "main", false)
+	res, err := local.Pull(ctx, remote, "default", "main", false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -40,7 +40,7 @@ func TestM3_PullFastForward(t *testing.T) {
 		t.Fatalf("pull 后本地应可读 r1: %v", err)
 	}
 	// 再 pull:已是最新,不传输
-	res2, err := local.Pull(ctx, remote, "main", false)
+	res2, err := local.Pull(ctx, remote, "default", "main", false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -52,13 +52,13 @@ func TestM3_PullFastForward(t *testing.T) {
 func TestM3_PullTransfersOnlyMissing(t *testing.T) {
 	ctx := context.Background()
 	local, remote, remoteRepo := seedRemoteFastForward(t)
-	if _, err := local.Pull(ctx, remote, "main", false); err != nil {
+	if _, err := local.Pull(ctx, remote, "default", "main", false); err != nil {
 		t.Fatal(err)
 	}
 	if _, _, err := remoteRepo.SetNote(ctx, "r3", NoteInput{Title: "R3", Body: "r3 brand new body"}, "r3"); err != nil {
 		t.Fatal(err)
 	}
-	res, err := local.Pull(ctx, remote, "main", false)
+	res, err := local.Pull(ctx, remote, "default", "main", false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -78,7 +78,7 @@ func TestM3_PullDivergeNeedsForce(t *testing.T) {
 	if _, _, err := remoteRepo.SetNote(ctx, "r1", NoteInput{Title: "R1"}, "r1"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := local.Pull(ctx, remote, "main", false); err != nil {
+	if _, err := local.Pull(ctx, remote, "default", "main", false); err != nil {
 		t.Fatal(err)
 	}
 	// 分叉:本地加 l1,远端加 r2
@@ -88,7 +88,7 @@ func TestM3_PullDivergeNeedsForce(t *testing.T) {
 	if _, _, err := remoteRepo.SetNote(ctx, "r2", NoteInput{Title: "R2"}, "r2"); err != nil {
 		t.Fatal(err)
 	}
-	_, err := local.Pull(ctx, remote, "main", false)
+	_, err := local.Pull(ctx, remote, "default", "main", false)
 	if err == nil {
 		t.Fatal("分叉后 pull 应报错")
 	}
@@ -96,7 +96,7 @@ func TestM3_PullDivergeNeedsForce(t *testing.T) {
 		t.Fatalf("期望 ErrDiverge,got %v", err)
 	}
 	// --force 覆盖
-	res, err := local.Pull(ctx, remote, "main", true)
+	res, err := local.Pull(ctx, remote, "default", "main", true)
 	if err != nil {
 		t.Fatalf("force pull 应成功: %v", err)
 	}

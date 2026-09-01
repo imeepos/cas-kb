@@ -60,7 +60,7 @@ func TestMigrateUpgradesV1ToV2PreservingBranches(t *testing.T) {
 		t.Fatalf("v1 库应自动迁移并成功打开: %v", err)
 	}
 	defer s.Close()
-	got, err := s.BranchGet(ctx, "legacy-main")
+	got, err := s.BranchGet(ctx, "default", "legacy-main")
 	if err != nil {
 		t.Fatalf("迁移后原分支应可读: %v", err)
 	}

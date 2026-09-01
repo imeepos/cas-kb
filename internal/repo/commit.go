@@ -65,7 +65,7 @@ func (r *Repo) Resolve(ctx context.Context, name string) (hash.Address, error) {
 		}
 		return r.resolveByPrefix(ctx, name)
 	}
-	branches, err := r.st.BranchList(ctx)
+	branches, err := r.st.BranchList(ctx, r.project)
 	if err != nil {
 		return "", err
 	}
@@ -77,35 +77,53 @@ func (r *Repo) Resolve(ctx context.Context, name string) (hash.Address, error) {
 	return r.resolveByPrefix(ctx, name)
 }
 
-// errStopScan 是扫描的内部提前终止信号:命中第二个快照即可判定歧义。
-var errStopScan = errors.New("repo: 终止前缀扫描")
-
-// resolveByPrefix 在全部快照对象中按地址前缀唯一匹配。
-// 命中第二个快照即提前终止扫描并报歧义,避免无谓的全表遍历。
-func (r *Repo) resolveByPrefix(ctx context.Context, prefix string) (hash.Address, error) {
-	var match hash.Address
-	n := 0
-	err := r.st.List(ctx, func(info store.ObjectInfo) error {
-		if info.Kind == object.KindSnapshot && strings.HasPrefix(string(info.Addr), prefix) {
-			match = info.Addr
-			n++
-			if n > 1 {
-				return errStopScan
-			}
-		}
-		return nil
-	})
-	if errors.Is(err, errStopScan) {
-		return "", ErrAmbiguousRef
+// reachableSnapshots 从当前项目全部分支头沿 parents 收集可达快照地址集合。
+func (r *Repo) reachableSnapshots(ctx context.Context) (map[string]bool, error) {
+	branches, err := r.st.BranchList(ctx, r.project)
+	if err != nil {
+		return nil, err
 	}
+	seen := map[string]bool{}
+	queue := make([]hash.Address, 0, len(branches))
+	for _, b := range branches {
+		queue = append(queue, b.Addr)
+	}
+	for len(queue) > 0 {
+		cur := queue[0]
+		queue = queue[1:]
+		if seen[string(cur)] {
+			continue
+		}
+		seen[string(cur)] = true
+		snap, err := r.loadSnapshot(ctx, cur)
+		if err != nil {
+			return nil, err
+		}
+		queue = append(queue, snap.Parents...)
+	}
+	return seen, nil
+}
+
+// resolveByPrefix 在当前项目的可达快照集合内按地址前缀唯一匹配。
+// 集合外的快照(他项目)对解析不可见——项目隔离的一部分。
+func (r *Repo) resolveByPrefix(ctx context.Context, prefix string) (hash.Address, error) {
+	set, err := r.reachableSnapshots(ctx)
 	if err != nil {
 		return "", err
+	}
+	match := hash.Address("")
+	n := 0
+	for addr := range set {
+		if strings.HasPrefix(addr, prefix) {
+			match = hash.Address(addr)
+			n++
+		}
 	}
 	switch n {
 	case 1:
 		return match, nil
 	case 0:
-		return "", fmt.Errorf("repo: 引用 %q 既不是分支也不是快照短标识: %w", prefix, store.ErrBranchNotFound)
+		return "", fmt.Errorf("repo: 引用 %q 既不是本项目的分支也不是快照短标识: %w", prefix, store.ErrBranchNotFound)
 	default:
 		return "", ErrAmbiguousRef
 	}

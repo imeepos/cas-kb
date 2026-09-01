@@ -22,23 +22,27 @@ type ObjectInfo struct {
 	Size int
 }
 
-// BranchRef 是分支表的一行:名字 -> 快照地址。
+// BranchRef 是分支表的一行:项目内名字 → 快照地址。
 type BranchRef struct {
-	Name string
-	Addr hash.Address
+	Project string
+	Name    string
+	Addr    hash.Address
 }
 
 // Store 是内容寻址存储 + 分支指针的最小契约。
-// 对象写入幂等;分支推进是唯一可变写路径。
+// 对象写入幂等且全局共享;分支按项目划分命名空间,推进是唯一可变写路径。
 type Store interface {
 	Put(ctx context.Context, kind object.Kind, data []byte) (hash.Address, error)
 	Get(ctx context.Context, addr hash.Address) ([]byte, object.Kind, error)
 	Has(ctx context.Context, addr hash.Address) (bool, error)
 	Delete(ctx context.Context, addr hash.Address) error
 	List(ctx context.Context, fn func(ObjectInfo) error) error
-	BranchGet(ctx context.Context, name string) (hash.Address, error)
-	BranchSet(ctx context.Context, name string, addr hash.Address) error
-	BranchDelete(ctx context.Context, name string) error
-	BranchList(ctx context.Context) ([]BranchRef, error)
+	ProjectCreate(ctx context.Context, name string) error
+	ProjectList(ctx context.Context) ([]string, error)
+	BranchGet(ctx context.Context, project, name string) (hash.Address, error)
+	BranchSet(ctx context.Context, project, name string, addr hash.Address) error
+	BranchDelete(ctx context.Context, project, name string) error
+	BranchList(ctx context.Context, project string) ([]BranchRef, error)
+	BranchListAll(ctx context.Context) ([]BranchRef, error)
 	Close() error
 }

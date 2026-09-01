@@ -8,30 +8,37 @@ import (
 )
 
 func main() {
-	if len(os.Args) < 2 {
+	args := os.Args[1:]
+	if len(args) >= 2 && args[0] == "-p" {
+		projectOverride = args[1]
+		args = args[2:]
+	}
+	if len(args) < 1 {
 		usage()
 		os.Exit(2)
 	}
 	ctx := context.Background()
-	switch os.Args[1] {
+	switch args[0] {
 	case "init":
-		must(cmdInit(ctx, os.Args[2:]))
+		must(cmdInit(ctx, args[1:]))
 	case "note":
-		must(cmdNote(ctx, os.Args[2:]))
+		must(cmdNote(ctx, args[1:]))
 	case "log":
-		must(cmdLog(ctx, os.Args[2:]))
+		must(cmdLog(ctx, args[1:]))
 	case "diff":
-		must(cmdDiff(ctx, os.Args[2:]))
+		must(cmdDiff(ctx, args[1:]))
 	case "pull":
-		must(cmdPull(ctx, os.Args[2:]))
+		must(cmdPull(ctx, args[1:]))
 	case "gc":
-		must(cmdGC(ctx, os.Args[2:]))
+		must(cmdGC(ctx, args[1:]))
 	case "fsck":
-		must(cmdFSCK(ctx, os.Args[2:]))
+		must(cmdFSCK(ctx, args[1:]))
+	case "project":
+		must(cmdProject(ctx, args[1:]))
 	case "help":
 		usage()
 	default:
-		fmt.Fprintf(os.Stderr, "kb: 未知命令 %q\n", os.Args[1])
+		fmt.Fprintf(os.Stderr, "kb: 未知命令 %q\n", args[0])
 		usage()
 		os.Exit(2)
 	}

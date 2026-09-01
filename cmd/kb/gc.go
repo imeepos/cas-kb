@@ -46,16 +46,17 @@ func applyGCProtection(cfg *repo.Config) {
 
 // backupRow 是备份文件的单行 JSON 契约:小写稳定键,不随内部类型变化。
 type backupRow struct {
-	Name string `json:"name"`
-	Addr string `json:"addr"`
+	Project string `json:"project"`
+	Name    string `json:"name"`
+	Addr    string `json:"addr"`
 }
 
-// exportBranchesFile 把分支表写成当前目录下的 JSON 备份文件。
+// exportBranchesFile 把全部分支表(所有项目)写成当前目录下的 JSON 备份文件。
 // 备份文件不自动清理,由运维按保留策略归档或删除。
 func exportBranchesFile(ctx context.Context, branches []store.BranchRef) error {
 	rows := make([]backupRow, 0, len(branches))
 	for _, b := range branches {
-		rows = append(rows, backupRow{Name: string(b.Name), Addr: string(b.Addr)})
+		rows = append(rows, backupRow{Project: b.Project, Name: string(b.Name), Addr: string(b.Addr)})
 	}
 	payload, err := json.MarshalIndent(rows, "", "  ")
 	if err != nil {

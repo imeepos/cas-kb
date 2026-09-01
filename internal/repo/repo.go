@@ -14,6 +14,8 @@ import (
 
 // Config 是仓库打开选项。
 type Config struct {
+	// Project 是项目作用域(M3.5 项目隔离),默认 "default"。
+	Project string
 	// Branch 是默认工作分支名,默认 "main"。
 	Branch string
 	// Now 注入时间源,便于测试;为空时用 time.Now。
@@ -27,6 +29,7 @@ type Config struct {
 // Repo 是一个已打开的知识库仓库。依赖 store,不反向依赖。
 type Repo struct {
 	st        store.Store
+	project   string
 	branch    string
 	now       func() int64
 	gcProtect bool
@@ -35,6 +38,10 @@ type Repo struct {
 
 // Open 构造仓库。Store 由调用方打开并负责 Close。
 func Open(s store.Store, cfg Config) *Repo {
+	project := cfg.Project
+	if project == "" {
+		project = "default"
+	}
 	branch := cfg.Branch
 	if branch == "" {
 		branch = "main"
@@ -43,7 +50,7 @@ func Open(s store.Store, cfg Config) *Repo {
 	if now == nil {
 		now = func() int64 { return time.Now().Unix() }
 	}
-	return &Repo{st: s, branch: branch, now: now,
+	return &Repo{st: s, project: project, branch: branch, now: now,
 		gcProtect: cfg.GCProtect, gcExport: cfg.GCExportBranches}
 }
 
@@ -52,7 +59,7 @@ func (r *Repo) Branch() string { return r.branch }
 
 // head 读取分支头;不存在返回 has=false。
 func (r *Repo) head(ctx context.Context) (hash.Address, bool, error) {
-	addr, err := r.st.BranchGet(ctx, r.branch)
+	addr, err := r.st.BranchGet(ctx, r.project, r.branch)
 	if errors.Is(err, store.ErrBranchNotFound) {
 		return "", false, nil
 	}

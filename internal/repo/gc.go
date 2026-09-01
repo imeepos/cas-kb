@@ -20,7 +20,7 @@ type GCResult struct {
 // 开启 GCProtect 时,清扫前先把分支表交给 GCExportBranches 备份;
 // 备份失败则中止 GC(不清扫任何对象)。
 func (r *Repo) GC(ctx context.Context) (GCResult, error) {
-	branches, err := r.st.BranchList(ctx)
+	branches, err := r.st.BranchListAll(ctx)
 	if err != nil {
 		return GCResult{}, err
 	}
