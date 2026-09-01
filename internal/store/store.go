@@ -43,6 +43,7 @@ type Store interface {
 	List(ctx context.Context, fn func(ObjectInfo) error) error
 	ProjectCreate(ctx context.Context, name, description string) error
 	ProjectStats(ctx context.Context) ([]ProjectStat, error)
+	ProjectGet(ctx context.Context, name string) (ProjectStat, error)
 	ProjectDescribe(ctx context.Context, name, description string) error
 	BranchGet(ctx context.Context, project, name string) (hash.Address, error)
 	BranchSet(ctx context.Context, project, name string, addr hash.Address) error
