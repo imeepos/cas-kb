@@ -203,7 +203,7 @@ cas-kb/
 | KB_GC_PROTECT | `on` | GC 清扫前自动导出分支表备份;设为 off/0/false 关闭 |
 | KB_REMOTE_DSN | (无) | `kb pull` 的远端连接串(也可作为命令行参数传入) |
 | KB_TEST_DSN | (无) | 集成测试基库连接串;未设置时跳过集成测试(仅测试使用) |
-| KB_PROJECT | `default` | 项目作用域(M3.5):note/log/diff/gc/fsck 等命令只作用于该项目;亦可用 -p 按命令覆盖 |
+| KB_PROJECT | `default` | 项目作用域:note/log/diff/gc/fsck 等命令只作用于该项目;亦可用 -p 按命令覆盖 |
 
 指向 102 的示例:`postgres://caskb_app:<密码>@192.168.x.102:5432/caskb?sslmode=disable`。
 安全要求:专用账号 `caskb_app`(只授 caskb 库权限)、密码走 scram-sha-256、内网传输是否启用 TLS 按内网策略定;**凭据一律走环境变量,不入库不入仓**。

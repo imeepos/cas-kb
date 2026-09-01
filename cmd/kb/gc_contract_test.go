@@ -15,8 +15,8 @@ import (
 func TestExportBranchesFileWritesStableContract(t *testing.T) {
 	t.Chdir(t.TempDir())
 	branches := []store.BranchRef{
-		{Name: "main", Addr: hash.Address("sha256:" + strings.Repeat("a", 64))},
-		{Name: "dev", Addr: hash.Address("sha256:" + strings.Repeat("b", 64))},
+		{Project: "default", Name: "main", Addr: hash.Address("sha256:" + strings.Repeat("a", 64))},
+		{Project: "lab", Name: "dev", Addr: hash.Address("sha256:" + strings.Repeat("b", 64))},
 	}
 	if err := exportBranchesFile(context.Background(), branches); err != nil {
 		t.Fatal(err)
@@ -38,6 +38,12 @@ func TestExportBranchesFileWritesStableContract(t *testing.T) {
 	}
 	if rows[0]["name"] != "main" || rows[0]["addr"] != string(branches[0].Addr) {
 		t.Fatalf("小写键 name/addr 契约不符: %v", rows[0])
+	}
+	if rows[0]["project"] != "default" {
+		t.Fatalf("小写键 project 契约不符: %v", rows[0])
+	}
+	if _, ok := rows[0]["Project"]; ok {
+		t.Fatal("备份不应出现大写键 Project")
 	}
 	if _, ok := rows[0]["Name"]; ok {
 		t.Fatal("备份不应出现大写键 Name")

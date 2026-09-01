@@ -21,8 +21,9 @@ type PullResult struct {
 var ErrDiverge = errors.New("repo: 本地与远端已分叉,拒绝快进")
 
 // Pull 把远端分支的可达对象同步到本地并据祖先关系推进分支。
-func (r *Repo) Pull(ctx context.Context, src store.Store, srcBranch string, force bool) (PullResult, error) {
-	remoteHead, err := src.BranchGet(ctx, r.project, srcBranch)
+// srcProject 允许从同一存储的其它项目拉取(同库时零对象传输)。
+func (r *Repo) Pull(ctx context.Context, src store.Store, srcProject, srcBranch string, force bool) (PullResult, error) {
+	remoteHead, err := src.BranchGet(ctx, srcProject, srcBranch)
 	if err != nil {
 		return PullResult{}, fmt.Errorf("repo: 远端分支 %q: %w", srcBranch, err)
 	}

@@ -36,7 +36,7 @@ func cmdPull(ctx context.Context, args []string) error {
 		return err
 	}
 	defer remote.Close()
-	res, err := r.Pull(ctx, remote, branchName(), force)
+	res, err := r.Pull(ctx, remote, projectName(), branchName(), force)
 	if err != nil {
 		if errors.Is(err, repo.ErrDiverge) {
 			return fmt.Errorf("pull: %w,需要 --force 才能覆盖", err)

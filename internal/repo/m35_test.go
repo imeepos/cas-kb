@@ -61,6 +61,60 @@ func TestM35_DefaultProjectUnspecified(t *testing.T) {
 	}
 }
 
+func TestM35_ShortIDNotCrossProject(t *testing.T) {
+	ctx := context.Background()
+	s, _ := freshStore(t)
+	for _, p := range []string{"alpha", "beta"} {
+		if err := s.ProjectCreate(ctx, p); err != nil {
+			t.Fatal(err)
+		}
+	}
+	ra := Open(s, Config{Project: "alpha", Now: func() int64 { return fixedTime }})
+	rb := Open(s, Config{Project: "beta", Now: func() int64 { return fixedTime }})
+	ca, _, err := ra.SetNote(ctx, "a", NoteInput{Title: "A"}, "add a")
+	if err != nil {
+		t.Fatal(err)
+	}
+	short := string(ca)[:16]
+	if got, err := ra.Resolve(ctx, short); err != nil || got != ca {
+		t.Fatalf("alpha 内应可解析自己的短标识: %v %v", got, err)
+	}
+	if _, err := rb.Resolve(ctx, short); err == nil {
+		t.Fatal("beta 不应解析到 alpha 的快照短标识")
+	}
+	if _, err := rb.Diff(ctx, short, short); err == nil {
+		t.Fatal("beta 的 diff 不应接受 alpha 的短标识")
+	}
+}
+
+func TestM35_CrossProjectPullZeroTransfer(t *testing.T) {
+	ctx := context.Background()
+	s, _ := freshStore(t)
+	for _, p := range []string{"alpha", "beta"} {
+		if err := s.ProjectCreate(ctx, p); err != nil {
+			t.Fatal(err)
+		}
+	}
+	sa := Open(s, Config{Project: "alpha", Now: func() int64 { return fixedTime }})
+	sb := Open(s, Config{Project: "beta", Now: func() int64 { return fixedTime }})
+	if _, _, err := sa.SetNote(ctx, "shared", NoteInput{Title: "Shared"}, "add shared"); err != nil {
+		t.Fatal(err)
+	}
+	res, err := sb.Pull(ctx, s, "alpha", "main", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Transferred != 0 {
+		t.Fatalf("同库跨项目 pull 应零传输,got %d", res.Transferred)
+	}
+	if !res.FastForward {
+		t.Fatal("空库拉取应 fast-forward")
+	}
+	if _, err := sb.Note(ctx, "shared"); err != nil {
+		t.Fatalf("拉取后 beta 应可读 shared: %v", err)
+	}
+}
+
 func TestM35_UnknownProjectFailsLoud(t *testing.T) {
 	ctx := context.Background()
 	s, _ := freshStore(t)
