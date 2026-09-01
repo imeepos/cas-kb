@@ -8,6 +8,7 @@ for _d in /opt/homebrew/bin /usr/local/bin /usr/local/go/bin; do
 done
 export PATH
 cd "$(dirname "$0")/.."
+REPO="$(pwd)"
 BASE_DSN="${1:-${KB_DSN:-postgres://postgres:postgres@127.0.0.1:5432/caskb?sslmode=disable}}"
 ADMIN_DSN="${BASE_DSN%/*}/postgres"
 E2E_DB="caskb_e2e_$(date +%s)_$$"
@@ -56,6 +57,10 @@ step "dir rm --force";       $KB -p alpha dir rm go --force > /dev/null
 if echo "$($KB -p alpha note ls)" | grep -qF "channel"; then echo "断言失败: force 删除后不应再有条目"; exit 1; fi
 step "根目录仍存 A1";        has "A1" "$($KB -p alpha note ls)"
 step "dir add 幂等";         $KB -p alpha dir add go > /dev/null
+step "backup.sh";            BKF=$(bash "$REPO/scripts/backup.sh" "$E2E_DSN" | grep -oE 'backups/[^ ]+' | head -1)
+step "restore.sh";           bash "$REPO/scripts/restore.sh" "$BKF" "${E2E_DB}_r" > /dev/null
+step "恢复库读回";           has "A1" "$(KB_DSN="${BASE_DSN%/*}/${E2E_DB}_r" $KB -p alpha note ls)"
+step "清理恢复库与备份";     psql "$ADMIN_DSN" -qAc "DROP DATABASE IF EXISTS ${E2E_DB}_r" > /dev/null; rm -f "$REPO/$BKF"
 step "gc + fsck";            out=$($KB gc); has "已备份" "$out"; has "完整,无问题" "$($KB fsck)"
 psql "$ADMIN_DSN" -qAc "DROP DATABASE IF EXISTS $E2E_DB" > /dev/null
 echo "E2E_GREEN"
