@@ -168,7 +168,9 @@ cas-kb/
 
 **repo.Repo**(业务层):SetNote / RemoveNote / Note / NoteAt / ListNotes(均按全路径定位条目,M3.8 起)+ Mkdir / RemoveDir / DirLs / DirTree(目录操作)+ Commit / Log / Diff(路径级比较)/ Pull / GC / FSCK + DumpLibrary / RestoreLibrary(整库备份/恢复,M3.9)。写路径沿目录链 copy-on-write:只重写受影响子树,兄弟子树地址结构共享。
 
-**整库备份/恢复(M3.9)**:JSONL 流式格式(header 记 schema_version;对象行含 base64 字节;项目/分支行含描述)。导入时**逐对象重算哈希校验完整性**,损坏文件响亮拒绝;文件头 schema_version 不符拒绝并提示配套版本;目标库非空默认拒绝(`--force` 先 Wipe 覆盖);恢复完成后建议 fsck 复核。与 §8.3 的 pg_dump 脚本互为补充:原生格式跨后端可移植、无 psql 依赖、自带校验;pg_dump 保留全保真 DB 级备份。
+**整库备份/恢复(M3.9)**:JSONL 流式格式(header 记 schema_version;对象行含 base64 字节;项目/分支行含描述)。导入时**逐对象重算哈希校验完整性**,损坏文件响亮拒绝;目标库非空默认拒绝(`--force` 先 Wipe 覆盖);恢复完成后建议 fsck 复核。与 §8.3 的 pg_dump 脚本互为补充:原生格式跨后端可移植、无 psql 依赖、自带校验;pg_dump 保留全保真 DB 级备份。
+
+**跨版本恢复(升级演练结论)**:restore 接受 header schema_version ∈ **[4, 当前]**——对象编码自 v4(带类型 tree 条目)起与当前逐字节兼容,旧备份的每个对象都可原样导入;恢复输出来源版本,低于当前时提示立即重新 backup 完成备份升级。v3 及更早备份(对象编码不兼容)与比当前更新的备份仍拒绝并给出可行动指引。**升级路径**(如 v0.1.x → v0.2.0):①旧版 kb `backup` 导出 .ckb;②新版 kb 对新库(或 `wipe --force` 后)`restore`;③`kb index rebuild` 补建检索索引;④`kb backup` 重新导出完成升级。注意:新版直接打开旧库文件仍被版本门禁拒绝(响亮失败,不做自动迁移),必须走备份恢复路径。
 
 ## 6. 关键流程
 

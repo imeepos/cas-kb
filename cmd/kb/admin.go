@@ -63,6 +63,9 @@ func cmdRestore(ctx context.Context, args []string) error {
 		return fmt.Errorf("restore: %w", err)
 	}
 	fmt.Printf("恢复完成: 对象 %d · 项目 %d · 分支 %d\n建议运行 kb fsck 复核\n", stats.Objects, stats.Projects, stats.Branches)
+	if stats.FromSchemaVersion > 0 && stats.FromSchemaVersion < store.DBSchemaVersion {
+		fmt.Printf("提示: 备份来自 schema v%d(当前 v%d);建议立即 kb backup 重新导出,完成备份升级\n", stats.FromSchemaVersion, store.DBSchemaVersion)
+	}
 	return nil
 }
 

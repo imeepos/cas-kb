@@ -16,11 +16,19 @@ import (
 // ErrNonEmptyLibrary 表示目标库非空,恢复被拒绝(可加 force 覆盖)。
 var ErrNonEmptyLibrary = errors.New("repo: 目标库非空")
 
+// MinRestoreSchemaVersion 是可恢复备份的最低来源库版本。
+// 对象编码自 v4 起(带类型 tree 条目,M3.8)与当前完全兼容——v5 只放宽
+// kind 约束并给 snapshot 加可选 index 字段,v4 备份的每个对象都可原样导入;
+// 更早版本(v3 及以下)的 tree 字节无法被当前解码,恢复没有意义,仍拒绝。
+const MinRestoreSchemaVersion = 4
+
 // DumpStats 汇报一次备份/恢复的对象、项目、分支计数。
+// Restore 时 FromSchemaVersion 为备份来源的库版本,供 CLI 提示升级。
 type DumpStats struct {
-	Objects  int
-	Projects int
-	Branches int
+	Objects           int
+	Projects          int
+	Branches          int
+	FromSchemaVersion int
 }
 
 // dumpRecord 是备份文件(JSONL)的一行,按 type 区分:header / object / project / branch。
@@ -118,10 +126,18 @@ func RestoreLibrary(ctx context.Context, s store.Store, r io.Reader, force bool)
 	if err := dec.Decode(&rec); err != nil {
 		return stats, fmt.Errorf("repo: 读取备份文件头失败: %w", err)
 	}
-	if rec.Type != "header" || rec.SchemaVersion != store.DBSchemaVersion {
-		return stats, fmt.Errorf("repo: 不是当前版本的备份文件(header schema_version=%d,期望 %d);"+
-			"请使用生成该备份时的 kb 版本导出", rec.SchemaVersion, store.DBSchemaVersion)
+	if rec.Type != "header" {
+		return stats, fmt.Errorf("repo: 不是备份文件(缺少 header 行)")
 	}
+	// 跨版本恢复门禁:接受 [MinRestoreSchemaVersion, DBSchemaVersion] 区间——
+	// 对象编码在窗口内逐字节兼容,旧备份恢复后建议立即重新 backup 完成升级。
+	switch {
+	case rec.SchemaVersion > store.DBSchemaVersion:
+		return stats, fmt.Errorf("repo: 备份来自更新版本的 kb(header schema_version=%d,当前支持 %d);请先升级 kb 再恢复", rec.SchemaVersion, store.DBSchemaVersion)
+	case rec.SchemaVersion < MinRestoreSchemaVersion:
+		return stats, fmt.Errorf("repo: 备份过旧(header schema_version=%d,最低支持 %d):该版本的对象编码与当前不兼容;请用配套旧版 kb 恢复后重新导出", rec.SchemaVersion, MinRestoreSchemaVersion)
+	}
+	stats.FromSchemaVersion = rec.SchemaVersion
 
 	// 对象流式导入;项目/分支缓存到最后统一落(分支外键依赖项目)
 	var projects, branches []dumpRecord
