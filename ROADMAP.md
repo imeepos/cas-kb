@@ -62,6 +62,17 @@
 
 **状态**:已交付。
 
+## M3.7 AI 选用元数据(schema v3)
+
+**范围**:projects/branches 增加 description 列、库 schema 版本 3(仅加列;旧库拒绝并指引重建,不做自动迁移)、store 描述读写契约(建项目带描述/描述就地更新/分支推进不覆盖描述)、CLI 发现出口(`kb project create --desc`、`project desc`、`project ls --json`、`kb branch ls [--json]`、`branch desc`)、`kb note ls --json` 展示层派生摘要(不改对象格式与地址)。
+
+**验收标准**
+- 全新库 init 后 schema_version=3;v2 存量库打开时拒绝服务并给出重建指引(由测试覆盖)
+- 建项目可带描述,描述可就地更新;`kb project ls --json` 含 name/description/branches
+- `kb branch ls --json` 含 description;分支推进(提交/reset)不清空既有描述
+- `kb note ls --json` 含派生摘要(标题+正文首段截断);对象编码与地址不变(fsck 通过)
+- 文档三处同步:schema.sql v3、DESIGN §2/§4.1/§4.6/§5.1、本节
+
 ## M4 检索与集成(可选)
 
 **范围**:倒排索引分片纳入快照、搜索命令或 HTTP API。

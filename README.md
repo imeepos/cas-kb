@@ -9,7 +9,7 @@
 | 文档 | 内容 |
 |---|---|
 | [DESIGN.md](DESIGN.md) | 完整设计:对象模型、存储设计、同步协议、GC、检索、部署与权衡 |
-| [schema.sql](schema.sql) | PostgreSQL 数据模型 DDL 规格(schema v2,含项目隔离) |
+| [schema.sql](schema.sql) | PostgreSQL 数据模型 DDL 规格(schema v3,含项目隔离与 AI 选用描述) |
 | [ROADMAP.md](ROADMAP.md) | 落地路线图:M1–M4 里程碑与验收标准 |
 
 ## 核心思想(30 秒版)

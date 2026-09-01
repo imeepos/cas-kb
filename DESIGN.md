@@ -28,7 +28,7 @@
 
 - **内容寻址**:`addr = "sha256:" + hex(sha256(规范字节))`;算法前缀为未来升级 BLAKE3 留门
 - **Merkle 结构**:父节点地址由子节点地址决定,任何叶子变动都会向上传播到根
-- **唯一可变点**:整个系统只有 `branches` 表可变((项目, 名字) → 快照地址)。备份、同步、并发全部归结为管理这张小表
+- **唯一可变点**:对象永远不可变;可变状态收敛于命名空间小表——branches((项目, 名字) → 快照地址)与两表的描述列(§4.6)。备份、同步、并发全部归结为管理这两张小表
 
 ## 3. 对象模型
 
@@ -74,11 +74,11 @@ MVP 的 tree 是扁平一层(slug → note);嵌套路径目录为演进项。
 四张表(完整 DDL 见 [schema.sql](schema.sql)):
 
 - **objects** — `addr(text PK), kind, size, data(bytea)`;只增不删(仅 GC 清扫);全局共享、跨项目去重
-- **projects** — `name(text PK), created_at`;项目隔离的一等实体(schema v2 新增)
-- **branches** — `(project, name)(复合主键), addr(→ objects), updated_at`;**全库唯一可变表**,按项目划分命名空间
+- **projects** — `name(text PK), description, created_at`;项目隔离的一等实体(schema v2 新增,v3 加描述列)
+- **branches** — `(project, name)(复合主键), addr(→ objects), updated_at, description`;**可变命名空间表(指针+描述)**,按项目划分命名空间
 - **meta** — `schema_version` 等键值;加载时版本不符直接拒绝(误配置报错要响)
 
-> 版本约定:库 schema 版本(meta.schema_version,当前 2)与对象编码版本(object.SchemaVersion)相互独立;本次 v2 仅动表结构,对象编码与地址不变。
+> 版本约定:库 schema 版本(meta.schema_version,当前 3)与对象编码版本(object.SchemaVersion)相互独立;v2 仅动表结构,v3 仅加描述列——对象编码与地址始终不变。
 
 ### 4.2 为什么 Postgres 合适
 
@@ -106,11 +106,19 @@ MVP 的 tree 是扁平一层(slug → note);嵌套路径目录为演进项。
 - **GC 全局**:对象共享时按项目清扫会误删他项目对象,GC 始终从全部项目的分支头出发标记
 - **跨项目搬运**:同库内跨项目 pull 只推进分支指针、零对象传输,充当知识共享通道
 
-## 5. Go 工程结构(M1–M3 已按此结构实现)
+### 4.6 AI 选用元数据(schema v3)
+
+- **动机**:AI 的选用链路是「哪个项目 → 哪条分支 → 哪篇条目」。社区通行做法是给可寻址资源配 name + description 的机器可读说明(MCP resources、llms.txt、OCI annotation 皆然);v2 只有名字没有说明,AI 只能拉全文猜测。
+- **落点与语义**:projects/branches 各加 description 列(NOT NULL DEFAULT '',约定 ≤512 字符)。描述是**命名空间层元数据**:就地 UPDATE、不产生快照、不进 DAG;对象与地址完全不动;分支推进的 UPSERT 不覆盖既有描述。
+- **不变量口径**:「唯一可变状态」由 branches 一张表放宽为 projects/branches 两张命名空间表(指针+描述);对象层仍只增不删。
+- **条目层**:note 对象格式不动(地址稳定优先)。AI 粗筛所需摘要由展示层从标题/标签/正文首段**派生**(`kb note ls` 的 JSON 输出),不改对象编码;把 description 写进 note JSON 属对象格式变更,列为演进项,须升级 object.SchemaVersion 并清库重建。
+- **发现出口**:`kb project ls --json` / `kb branch ls --json` 输出含描述的机器可读清单,AI 一次调用完成选用。
+
+## 5. Go 工程结构(M1–M3.6 按此结构实现)
 
 ```
 cas-kb/
-├── cmd/kb/          CLI 入口:init / note / log / diff / pull / gc / fsck
+├── cmd/kb/          CLI 入口:init / note / log / diff / pull / gc / fsck / reset / project / branch
 ├── internal/
 │   ├── hash/        地址类型、sha256 封装、格式校验
 │   ├── object/      四类对象定义、规范编解码、结构校验
@@ -130,7 +138,8 @@ cas-kb/
 | Put(kind, data) → addr | 幂等;同地址重复写等价于空操作 |
 | Get(addr) → (data, kind) | 不存在返回哨兵错误 NotFound;kind 必须合法 |
 | Has / Delete / List | Has 供遍历跳过;Delete 仅 GC 使用;List 供 GC/FSCK 全量扫描 |
-| BranchGet / BranchSet / BranchDelete / BranchList | 均按项目作用域(repo 层注入项目);BranchSet 是唯一写路径,UPSERT;目标对象不存在时报错(FK 兜底) |
+| ProjectCreate(name, description) / ProjectStats / ProjectDescribe | 建项目幂等(已存在等价空操作,可带描述);Stats 返回名称/描述/分支数;Describe 就地更新描述,不产生快照 |
+| BranchGet / BranchSet / BranchDelete / BranchList / BranchDescribe | 均按项目作用域(repo 层注入项目);BranchSet 是快照推进的唯一写路径,UPSERT 仅更新 addr/updated_at(**不覆盖 description**),目标对象不存在时报错(FK 兜底);BranchDescribe 就地更新分支描述;BranchList 返回的 BranchRef 含描述 |
 | Close | 释放连接 |
 
 **repo.Repo**(业务层):PutNote / SetNote / RemoveNote / Note / ListNotes / Commit / Log / Diff / Pull / GC / FSCK。
