@@ -244,7 +244,19 @@ cas-kb/
 
 **CLI**:`kb search <query...> [--at 快照] [-n N] [--json]`;`kb index rebuild` 从当前快照全量重建(自愈,亦用于旧库升级)。
 
+**空库与无索引契约**:空库(无任何提交)检索返回无结果——与 `note ls` 的「(no notes)」对齐;有提交但快照无索引(M4 之前的旧数据)检索报错并指引 `kb index rebuild`。该契约由 `TestM4_SearchContract` 钉死。
+
 **与原设计的差异**:原稿设想「每分片 = 小 tree」,落地为独立两类 kind——tree 条目的 type(note|dir)语义不匹配倒排项,独立 kind 让 childrenOf/fsck 的 kind 一致性校验保持精确;schema v5 门禁如约升级(原 §7 预案)。语义向量检索同法处理(IVF 聚类分片),列为演进项。
+
+**设计权衡(如实记录)**:
+- `indexroot.docs` 的 path/len 是**派生缓存**,权威事实来源永远是快照 root tree;缓存丢失或损坏可由 `kb index rebuild` 全量重建,正确性不依赖它
+- commit 内索引增量需加载旧快照与旧 tree 并收集叶子,单次提交成本 O(N)(N=条目数)——知识库量级(N ≤ 数万)无感;若未来写路径成为瓶颈,可改为由变更集直接驱动(调用方传入 diff),接口已预留
+- 量级判断:该方案目标 ≤ 十万条;此前已论证该量级下精确遍历/全量分片优于 ANN(可复现 + 结构共享 + 双后端对称),勿提前优化
+
+**版本号演进规则(两套门禁各管一域)**:
+- `object.SchemaVersion`(note meta 内嵌):**对象编码**字段/语义变更时升级——旧字节无法按新结构解码的场合;升级即意味旧对象不可读,需清库重建(v3 tree 条目加 type 即是)
+- `DBSchemaVersion`(meta 表):**库表 DDL**或跨对象不变式变更时升级(加列、加表、放宽 kind 约束);升级即拒绝旧库打开,指引清库重建(v3 加 description 列、v5 放宽 kind 即是)
+- 仅追加「可选字段 + omitempty」且新旧解码双向兼容的演进,两者都可不动(v5 的 `snapshot.index` 即是,旧快照编码逐字节不变)
 
 ## 8. 部署与配置
 
