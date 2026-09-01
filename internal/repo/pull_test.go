@@ -33,8 +33,10 @@ func TestM3_PullFastForward(t *testing.T) {
 	if !res.FastForward {
 		t.Fatal("空库 pull 应 fast-forward")
 	}
-	if res.Transferred != 8 {
-		t.Fatalf("首次应传输 8 个对象,got %d", res.Transferred)
+	// M4 起快照携带检索索引(DESIGN §7):8 个业务对象
+	// + 两次提交各 1 个索引根 + r1 三桶分片 + r2 重写三桶分片(r1/unique/body、r2/unique/body)
+	if res.Transferred != 16 {
+		t.Fatalf("首次应传输 16 个对象,got %d", res.Transferred)
 	}
 	if _, err := local.Note(ctx, "r1"); err != nil {
 		t.Fatalf("pull 后本地应可读 r1: %v", err)
@@ -62,8 +64,10 @@ func TestM3_PullTransfersOnlyMissing(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if res.Transferred != 4 {
-		t.Fatalf("增量应只传 4 个新对象,got %d", res.Transferred)
+	// 增量 = 4 个业务对象(blob/note/tree/snapshot)+ 1 个索引根
+	// + 4 个受影响分片(r3/brand/new/body 桶,其中 body 桶为重写,r1/r2 桶复用不传)
+	if res.Transferred != 9 {
+		t.Fatalf("增量应只传 9 个新对象,got %d", res.Transferred)
 	}
 	if _, err := local.Note(ctx, "r3"); err != nil {
 		t.Fatalf("pull 后本地应可读 r3: %v", err)

@@ -65,7 +65,7 @@
 
 性质:任何历史快照内,链接指向该版本的对象;切换版本,解析随之一致(时间旅行一致性)。改了笔记 A,生成 A′(新地址)+ 新 tree,旧快照里链接依然解析到旧 A——双向链接永不悬空。
 
-**目录层级(M3.8)**:tree 条目带类型(note\|dir),dir 条目指向子 tree,目录可任意嵌套。条目全路径 = 目录段 + slug(如 `go/concurrency/channel`),`/` 是路径分隔符;单段路径即根目录条目,与 M2 扁平用法完全兼容。空目录是合法实体(空 entries 树,沿父链可达,GC 不回收);同目录内 slug 唯一 ⇒ 条目与目录天然不同名。链接 slug 的解析:先按全路径精确匹配;未命中再按叶子名全库唯一匹配,命中多个即报歧义并列出候选——规则确定且随快照自洽。
+**目录层级(M3.8)**:tree 条目带类型(note\|dir),dir 条目指向子 tree,目录可任意嵌套。条目全路径 = 目录段 + slug(如 `go/concurrency/channel`),`/` 是路径分隔符;单段路径即根目录条目,与 M2 扁平用法完全兼容。空目录是合法实体(空 entries 树,沿父链可达,GC 不回收);同目录内 slug 唯一 ⇒ 条目与目录天然不同名。链接 slug 的解析:先按全路径精确匹配;未命中再按叶子名全库唯一匹配,命中多个即报歧义并列出候选——规则确定且随快照自洽。**已实现(M4)**:`repo.ResolveLink/ResolveLinkAt`(后者随指定快照解析,时间旅行一致);CLI `kb link resolve <slug> [--at 快照] [--json]`。
 
 ## 4. 存储设计(SQLite 默认,PostgreSQL 可选)
 
@@ -116,6 +116,7 @@
 - **发现出口**:`kb project ls --json` / `kb branch ls --json` 输出含描述的机器可读清单,AI 一次调用完成选用。
 - **输出契约**:机器消费一律走 `--json`(字段名与结构即契约,调整须在本文档与 ROADMAP 显式记录);文本输出面向人,列格式可能随版本调整——v3 起 `project ls` 文本为「名称/分支数/描述」三列,空描述显示「(未设置)」占位。惯例依据:clig.dev(人类输出为人调优、机器输出走稳定 stdout 通道)与 arduino-cli 向后兼容政策(输出格式变更视为破坏性变更,须显式声明)。v4 起契约变化:`note ls --json` 每行新增 `path` 字段(`slug` 保留为路径叶段);`note get` 文本首列由 `slug:` 改为 `path:`;`diff` 文本与结构化输出的条目键由 slug 改为全路径;新增 `dir ls --json`(每项 name/type/title)。
 - **全库树视图(M3.11 增量)**:`kb dir tree` 未显式指定项目(`-p`/`KB_PROJECT` 均未设置)且未给路径参数时,渲染全库文本视图:`(root)/` 下项目为顶层节点,逐项目挂其默认分支(`KB_BRANCH`)的树,无分支的空项目显示 (空);显式指定项目后保持单项目树不变。文本视图面向人;机器消费仍走 `kb project ls --json` 与 `kb note ls --json`。
+- **检索与链接(M4 契约)**:`search --json` 每项为 `{path, slug, addr, title, tags, summary, score}`(score 为 BM25 浮点分);`link resolve --json` 为 `{path, slug, addr, title}`;文本输出 search 为「分数 路径 标题」、link resolve 为 path/addr/title 三行。新增命令:`kb search`、`kb link resolve`、`kb index rebuild`(全部支持 `-p` 项目作用域)。
 
 ### 4.7 目录层级(schema v4)
 
@@ -179,7 +180,9 @@ cas-kb/
   → 写正文 blob → 写 note 对象
   → 沿目录链 copy-on-write:叶子目录 entries[slug] = note 地址,
     缺失中间目录自动创建,自底向上写新 tree、替换父条目地址
-  → 写新 snapshot(parents = [旧头])
+  → 检索索引增量更新(§7):新旧 tree 叶子无差异 → 复用原索引地址;
+    有差异 → 只重写受影响分片(结构共享)
+  → 写新 snapshot(parents = [旧头],index = 索引根地址)
   → UPSERT 分支指针
 ```
 
@@ -224,11 +227,24 @@ cas-kb/
 - **历史读取**:note get --at <快照> 按指定快照读条目;短标识解析限定当前项目可达集——被放弃的快照需用完整地址访问(地址即内容,GC 前有效)
 - **与 pull 的交互**:回退后本地头是远端头的祖先,再 pull 会被 fast-forward 推回;多机回退需各端一致
 
-## 7. 检索(M4,可选)
+## 7. 检索(M4,已交付 CLI)
 
-- 倒排索引分片:每分片 = {词 → note 地址列表} 的小 tree,分片地址 = 分片内容哈希
-- 索引版本纳入快照(格式演进时给 snapshot 加 index 字段并升 schema_version)→ **同一快照搜索结果必然一致(可复现、可审计)**
-- 更新只重建受影响分片,其余分片地址复用(结构共享);语义向量检索同法处理
+索引全部落为 CAS 对象、由快照引用,继承「可复现、可审计、结构共享、跨后端可移植」四性质;store 对索引零感知。
+
+**对象模型(两类新 kind,库 schema v5)**:
+- `indexshard`(分片):`{bucket, postings: 词元 → [{a: note 地址, t/g/b: 标题/标签/正文词频}]}`;词元分桶 = FNV-1a % 64,固定片数保证同词元永远同桶
+- `indexroot`(索引根):`{version, shards[64](以桶号为下标,空桶空串), docs: [{a, p, l}](文档表:地址→路径与加权长度)}`;文档表按地址排序
+- `snapshot.index`(可选字段,`omitempty`):无索引快照的编码与之前逐字节一致(地址不变);旧快照(无索引)检索时报错并指引 `kb index rebuild`
+
+**分词**:Unicode 小写归一 + ASCII 词元(含数字)+ CJK 2-gram(单字成元)+ 其余分隔;输出按字典序,同输入逐字节一致。
+
+**打分**:BM25(k1=1.2, b=0.75),词频与文档长度均为字段加权(标题 3/标签 2/正文 1),权重在查询期套用,调整不需重建索引;多词 OR 归并。**确定性排序:分数降序 → 路径升序 → 地址**——同一快照同一查询结果与顺序完全一致(ROADMAP M4)。
+
+**写路径**:commitTree 内按新旧 tree 的叶子差异增量重建——无差异复用原索引地址;有差异只重写受影响桶(先载旧分片再作减法/加法,不丢同桶其他笔记);结构无变化的桶产出相同地址,天然结构共享。`childrenOf` 纳入索引对象,GC/pull/fsck/backup 零改动继承。
+
+**CLI**:`kb search <query...> [--at 快照] [-n N] [--json]`;`kb index rebuild` 从当前快照全量重建(自愈,亦用于旧库升级)。
+
+**与原设计的差异**:原稿设想「每分片 = 小 tree」,落地为独立两类 kind——tree 条目的 type(note|dir)语义不匹配倒排项,独立 kind 让 childrenOf/fsck 的 kind 一致性校验保持精确;schema v5 门禁如约升级(原 §7 预案)。语义向量检索同法处理(IVF 聚类分片),列为演进项。
 
 ## 8. 部署与配置
 

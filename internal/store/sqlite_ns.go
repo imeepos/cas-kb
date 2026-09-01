@@ -19,6 +19,23 @@ func (s *SQLite) ProjectCreate(ctx context.Context, name, description string) er
 	return nil
 }
 
+// ProjectGet 读取单个项目的名称/描述/分支数;不存在返回 ErrProjectNotFound。
+func (s *SQLite) ProjectGet(ctx context.Context, name string) (ProjectStat, error) {
+	var stat ProjectStat
+	err := s.db.QueryRowContext(ctx,
+		"SELECT p.name, p.description, count(b.name) FROM projects p "+
+			"LEFT JOIN branches b ON b.project = p.name "+
+			"WHERE p.name = ? GROUP BY p.name, p.description", name).
+		Scan(&stat.Project, &stat.Description, &stat.Branches)
+	if errors.Is(err, sql.ErrNoRows) {
+		return ProjectStat{}, ErrProjectNotFound
+	}
+	if err != nil {
+		return ProjectStat{}, fmt.Errorf("store: ProjectGet 失败: %w", err)
+	}
+	return stat, nil
+}
+
 // ProjectDescribe 就地更新项目描述(命名空间元数据,不产生快照)。
 // 项目不存在返回 ErrProjectNotFound。
 func (s *SQLite) ProjectDescribe(ctx context.Context, name, description string) error {

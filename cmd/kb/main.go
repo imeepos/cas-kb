@@ -36,6 +36,10 @@ func main() {
 		must(cmdInit(ctx, args[1:]))
 	case "note":
 		must(cmdNote(ctx, args[1:]))
+	case "link":
+		must(cmdLink(ctx, args[1:]))
+	case "search":
+		must(cmdSearch(ctx, args[1:]))
 	case "dir":
 		must(cmdDir(ctx, args[1:]))
 	case "log":
@@ -48,6 +52,8 @@ func main() {
 		must(cmdGC(ctx, args[1:]))
 	case "fsck":
 		must(cmdFSCK(ctx, args[1:]))
+	case "index":
+		must(cmdIndex(ctx, args[1:]))
 	case "reset":
 		must(cmdReset(ctx, args[1:]))
 	case "project":

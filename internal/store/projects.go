@@ -2,7 +2,10 @@ package store
 
 import (
 	"context"
+	"errors"
 	"fmt"
+
+	"github.com/jackc/pgx/v5"
 )
 
 // ProjectStat 是项目及其描述、分支数的摘要。
@@ -19,6 +22,23 @@ func (p *PG) ProjectCreate(ctx context.Context, name, description string) error 
 		return fmt.Errorf("store: ProjectCreate 失败: %w", err)
 	}
 	return nil
+}
+
+// ProjectGet 读取单个项目的名称/描述/分支数;不存在返回 ErrProjectNotFound。
+func (p *PG) ProjectGet(ctx context.Context, name string) (ProjectStat, error) {
+	var s ProjectStat
+	err := p.pool.QueryRow(ctx,
+		"SELECT p.name, p.description, count(b.name) FROM projects p "+
+			"LEFT JOIN branches b ON b.project = p.name "+
+			"WHERE p.name = $1 GROUP BY p.name, p.description", name).
+		Scan(&s.Project, &s.Description, &s.Branches)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return ProjectStat{}, ErrProjectNotFound
+	}
+	if err != nil {
+		return ProjectStat{}, fmt.Errorf("store: ProjectGet 失败: %w", err)
+	}
+	return s, nil
 }
 
 // ProjectDescribe 就地更新项目描述(命名空间元数据,不产生快照)。

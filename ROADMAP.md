@@ -2,7 +2,7 @@
 
 每个里程碑交付可独立验收的能力;验收标准即测试用例的来源。
 
-> 状态:M1–M3.10 已交付并通过验收(M3.10=存储后端可插拔:SQLite 默认、PostgreSQL 可选);M3.11=dir tree 全库视图(展示层增量)已交付;M4 为可选项,未开工。
+> 状态:M1–M3.10 已交付并通过验收(M3.10=存储后端可插拔:SQLite 默认、PostgreSQL 可选);M3.11=dir tree 全库视图(展示层增量)已交付;M4 CLI 部分已交付(倒排索引纳入快照 + kb search / link resolve / index rebuild,schema v5);HTTP API 未开工。
 
 ## M1 存储内核
 
@@ -129,11 +129,17 @@
 
 **状态**:已交付(CLI + 单元测试)。
 
-## M4 检索与集成(可选)
+## M4 检索与集成
 
 **范围**:倒排索引分片纳入快照、搜索命令或 HTTP API。
 
-**验收标准**
-- 同一快照重复搜索,结果与顺序完全一致(可复现)
-- 更新一篇笔记后,只有受影响分片地址变化,其余分片结构共享
-- (若做 HTTP API)对同一快照的读写经 API 与 CLI 结果一致
+**交付(M4 CLI 批次,schema v5)**:倒排索引两类 CAS 对象(indexroot/indexshard)纳入快照(index 字段);CJK 2-gram 确定性分词;BM25 检索 `kb search`(字段加权:标题3/标签2/正文1;确定性排序:分数降序→路径升序→地址;--at 历史快照检索);commit 内增量分片重建(结构共享)+ `kb index rebuild` 全量重建;顺带交付链接 slug 解析 `kb link resolve`(§3.3 规则落地)与 `store.ProjectGet` 契约补全。
+
+**验收标准(全部已验)**
+- 同一快照重复搜索,结果与顺序完全一致(可复现)——e2e diff 断言 + 单元测试
+- 更新一篇笔记后,只有受影响分片地址变化,其余分片结构共享——TestM4_IndexStructuralSharing
+- (若做 HTTP API)对同一快照的读写经 API 与 CLI 结果一致——**未做**,HTTP API 仍为可选项
+
+**验收命令**
+- `go test ./internal/index/ ./internal/repo/ -run "TestM4|TestSearch"`
+- `./scripts/e2e.sh`(含 M4 段:命中/确定性/--json/--at/rebuild/fsck)

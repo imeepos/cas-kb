@@ -96,5 +96,18 @@ if [ "$MODE_SQLITE" = 0 ]; then
   step "清理恢复库与备份";   psql "$ADMIN_DSN" -qAc "DROP DATABASE IF EXISTS ${E2E_DB}_r" > /dev/null; rm -f "$REPO/$BKF"
 fi
 
+# ---- M4 检索与链接解析(DESIGN §7/§3.3)----
+step "M4 建检索语料";         $KB -p alpha note set go/searching/index --title "检索索引" --body "倒排与 BM25" -m m4 > /dev/null
+step "search 命中";          out=$($KB -p alpha search BM25); has "go/searching/index" "$out"
+step "search 确定性(可复现)"; diff <($KB -p alpha search BM25) <($KB -p alpha search BM25) || { echo "断言失败: 同快照搜索应逐字节一致"; exit 1; }
+step "search --json 契约";   jout=$($KB -p alpha search BM25 --json); has '"path": "go/searching/index"' "$jout"
+step "search --at 历史快照";  has "(no results)" "$($KB -p alpha search BM25 --at "$S1")"
+step "search 无命中";        has "(no results)" "$($KB -p alpha search 绝无仅有词q)"
+step "link resolve 全路径";   out=$($KB -p alpha link resolve go/searching/index); has "path:  go/searching/index" "$out"
+step "link resolve 叶名回退"; out=$($KB -p alpha link resolve task); has "path:  task" "$out"
+step "index rebuild";        out=$($KB -p alpha index rebuild); has "index sha256:" "$out"
+step "rebuild 后检索可用";    out=$($KB -p alpha search BM25); has "go/searching/index" "$out"
+step "fsck 通过(索引可达)";   has "完整,无问题" "$($KB fsck)"
+
 step "gc + fsck";            out=$($KB gc); has "已备份" "$out"; has "完整,无问题" "$($KB fsck)"
 echo "E2E_GREEN"

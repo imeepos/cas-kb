@@ -95,15 +95,10 @@ func projectDesc(ctx context.Context, s store.Store, args []string) error {
 		fmt.Printf("项目 %s 描述已更新\n", name)
 		return nil
 	}
-	stats, err := s.ProjectStats(ctx)
+	stat, err := s.ProjectGet(ctx, name)
 	if err != nil {
 		return err
 	}
-	for _, st := range stats {
-		if st.Project == name {
-			fmt.Println(descOrEmpty(st.Description))
-			return nil
-		}
-	}
-	return store.ErrProjectNotFound
+	fmt.Println(descOrEmpty(stat.Description))
+	return nil
 }

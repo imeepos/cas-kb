@@ -14,10 +14,12 @@ type Kind string
 
 // 四类对象类型常量。
 const (
-	KindBlob     Kind = "blob"
-	KindNote     Kind = "note"
-	KindTree     Kind = "tree"
-	KindSnapshot Kind = "snapshot"
+	KindBlob       Kind = "blob"
+	KindNote       Kind = "note"
+	KindTree       Kind = "tree"
+	KindSnapshot   Kind = "snapshot"
+	KindIndexRoot  Kind = "indexroot"  // M4 检索索引根
+	KindIndexShard Kind = "indexshard" // M4 倒排索引分片
 )
 
 // SchemaVersion 是当前结构化对象(meta)的格式版本。字段集合变更必须升级此值。
@@ -25,10 +27,12 @@ const SchemaVersion = 1
 
 // validKinds 声明所有合法 kind。
 var validKinds = map[Kind]bool{
-	KindBlob:     true,
-	KindNote:     true,
-	KindTree:     true,
-	KindSnapshot: true,
+	KindBlob:       true,
+	KindNote:       true,
+	KindTree:       true,
+	KindSnapshot:   true,
+	KindIndexRoot:  true,
+	KindIndexShard: true,
 }
 
 // IsValidKind 报告 kind 是否合法。
@@ -93,12 +97,46 @@ type Tree struct {
 }
 
 // Snapshot 是全库一个版本的命名:root tree 地址 + 历史父母 + 时间与消息。
+// Index(M4)指向检索索引根对象;为空表示该快照未建索引(旧数据,可全量重建)。
+// omitempty 保证无索引快照的编码与 M4 之前逐字节一致(对象地址不变)。
 type Snapshot struct {
 	Kind    Kind      `json:"kind"`
 	Root    Address   `json:"root"`
 	Parents []Address `json:"parents,omitempty"`
 	Time    int64     `json:"time"`
 	Message string    `json:"message"`
+	Index   Address   `json:"index,omitempty"`
+}
+
+// IndexDoc 是索引文档表的一行:note 地址 → 路径与加权文档长度(BM25 用)。
+type IndexDoc struct {
+	Addr Address `json:"a"`
+	Path string  `json:"p"`
+	Len  int     `json:"l"`
+}
+
+// IndexRoot 是检索索引根:固定槽位分片地址表(以桶号为下标,空桶为空串)
+// + 文档表(按地址排序)。Version 是索引格式版本,格式演进时升级。
+type IndexRoot struct {
+	Kind    Kind       `json:"kind"`
+	Version int        `json:"version"`
+	Shards  []Address  `json:"shards"`
+	Docs    []IndexDoc `json:"docs"`
+}
+
+// IndexPosting 是一个词元对一篇笔记的倒排项:标题/标签/正文各字段词频。
+type IndexPosting struct {
+	Addr  Address `json:"a"`
+	Title int     `json:"t"`
+	Tags  int     `json:"g"`
+	Body  int     `json:"b"`
+}
+
+// IndexShard 是一个倒排分片:词元 → 倒排项列表(项按 note 地址排序)。
+type IndexShard struct {
+	Kind     Kind                      `json:"kind"`
+	Bucket   int                       `json:"bucket"`
+	Postings map[string][]IndexPosting `json:"postings"`
 }
 
 // Address 是内容寻址地址的别名,便于对象层引用。
