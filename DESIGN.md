@@ -244,6 +244,8 @@ cas-kb/
 
 **CLI**:`kb search <query...> [--at 快照] [-n N] [--json]`;`kb index rebuild` 从当前快照全量重建(自愈,亦用于旧库升级)。
 
+**空库与无索引契约**:空库(无任何提交)检索返回无结果——与 `note ls` 的「(no notes)」对齐;有提交但快照无索引(M4 之前的旧数据)检索报错并指引 `kb index rebuild`。该契约由 `TestM4_SearchContract` 钉死。
+
 **与原设计的差异**:原稿设想「每分片 = 小 tree」,落地为独立两类 kind——tree 条目的 type(note|dir)语义不匹配倒排项,独立 kind 让 childrenOf/fsck 的 kind 一致性校验保持精确;schema v5 门禁如约升级(原 §7 预案)。语义向量检索同法处理(IVF 聚类分片),列为演进项。
 
 ## 8. 部署与配置

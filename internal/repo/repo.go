@@ -57,6 +57,9 @@ func Open(s store.Store, cfg Config) *Repo {
 // Branch 返回当前分支名。
 func (r *Repo) Branch() string { return r.branch }
 
+// Project 返回当前项目作用域名。
+func (r *Repo) Project() string { return r.project }
+
 // head 读取分支头;不存在返回 has=false。
 func (r *Repo) head(ctx context.Context) (hash.Address, bool, error) {
 	addr, err := r.st.BranchGet(ctx, r.project, r.branch)
