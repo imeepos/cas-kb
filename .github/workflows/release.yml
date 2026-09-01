@@ -100,6 +100,8 @@ jobs:
     permissions:
       contents: write
     steps:
+      # gh release create --verify-tag 需要本地 .git;checkout 后 gh 借助令牌可访问 origin
+      - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
           path: dist
