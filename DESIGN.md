@@ -156,6 +156,7 @@ cas-kb/
 - 从全部分支头出发做可达性标记(snapshot → tree → note → blob,parents 递归)
 - 未标记对象删除并计数
 - 误删保护:GC 清扫前自动导出分支表为 JSON 备份文件(配置项 KB_GC_PROTECT,默认 on;备份失败则中止 GC);MVP 不做 reflog
+- 保护分层:CLI 默认开启;repo 库层默认关闭,由调用方显式开启;备份文件不自动清理,由运维按保留策略归档或删除
 
 ### 6.5 FSCK
 
