@@ -21,7 +21,7 @@ KB="$WORK/kb"
 step() { echo "--- $1"; }
 has() { echo "$2" | grep -qF "$1" || { echo "断言失败: 期望包含 [$1],实际: $2"; exit 1; }; }
 step "init";                 $KB init > /dev/null
-step "project create alpha"; $KB project create alpha > /dev/null
+step "project create alpha"; $KB project create alpha --desc "e2e 演练项目" > /dev/null
 step "-p alpha note set A1"; $KB -p alpha note set task --title A1 --body v1 -m add1 > /dev/null
 S1=$($KB -p alpha log | tail -1 | awk '{print $1}')
 step "-p alpha note set A2"; $KB -p alpha note set task --title A2 --body v2 -m add2 > /dev/null
@@ -32,6 +32,11 @@ step "reset 到 S1";          out=$($KB -p alpha reset "$S1"); has "放弃 1 个
 step "ls 只剩 A1";           has "A1" "$($KB -p alpha note ls)"
 step "default 项目为空";      has "(no notes)" "$($KB note ls)"
 step "project ls 统计";      has "alpha" "$($KB project ls)"; has "default" "$($KB project ls)"
+step "project desc 读回";    has "e2e 演练项目" "$($KB project desc alpha)"
+step "project ls --json";    jout=$($KB project ls --json); has '"description": "e2e 演练项目"' "$jout"
+step "branch desc 设置";     $KB -p alpha branch desc main 工作线 > /dev/null
+step "branch ls --json";     bout=$($KB -p alpha branch ls --json); has '"description": "工作线"' "$bout"
+step "note ls --json 摘要";  has '"summary": "v1"' "$($KB -p alpha note ls --json)"
 step "gc + fsck";            out=$($KB gc); has "已备份" "$out"; has "完整,无问题" "$($KB fsck)"
 psql "$ADMIN_DSN" -qAc "DROP DATABASE IF EXISTS $E2E_DB" > /dev/null
 echo "E2E_GREEN"
