@@ -17,12 +17,12 @@ func cmdProject(ctx context.Context, args []string) error {
 	defer s.Close()
 	switch args[0] {
 	case "ls":
-		names, err := s.ProjectList(ctx)
+		stats, err := s.ProjectStats(ctx)
 		if err != nil {
 			return err
 		}
-		for _, n := range names {
-			fmt.Println(n)
+		for _, st := range stats {
+			fmt.Printf("%s\t%d\n", st.Project, st.Branches)
 		}
 		return nil
 	case "create":

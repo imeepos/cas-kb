@@ -5,6 +5,12 @@ import (
 	"fmt"
 )
 
+// ProjectStat 是项目及其分支数的摘要。
+type ProjectStat struct {
+	Project  string
+	Branches int
+}
+
 // ProjectCreate 创建项目;已存在则等价空操作(幂等)。
 func (p *PG) ProjectCreate(ctx context.Context, name string) error {
 	if _, err := p.pool.Exec(ctx,
@@ -14,20 +20,23 @@ func (p *PG) ProjectCreate(ctx context.Context, name string) error {
 	return nil
 }
 
-// ProjectList 列出全部项目名(字典序)。
-func (p *PG) ProjectList(ctx context.Context) ([]string, error) {
-	rows, err := p.pool.Query(ctx, "SELECT name FROM projects ORDER BY name")
+// ProjectStats 列出全部项目及各自的分支数(字典序)。
+func (p *PG) ProjectStats(ctx context.Context) ([]ProjectStat, error) {
+	rows, err := p.pool.Query(ctx,
+		"SELECT p.name, count(b.name) FROM projects p "+
+			"LEFT JOIN branches b ON b.project = p.name "+
+			"GROUP BY p.name ORDER BY p.name")
 	if err != nil {
-		return nil, fmt.Errorf("store: ProjectList 失败: %w", err)
+		return nil, fmt.Errorf("store: ProjectStats 失败: %w", err)
 	}
 	defer rows.Close()
-	names := []string{}
+	stats := []ProjectStat{}
 	for rows.Next() {
-		var n string
-		if err := rows.Scan(&n); err != nil {
-			return nil, fmt.Errorf("store: ProjectList 扫描失败: %w", err)
+		var s ProjectStat
+		if err := rows.Scan(&s.Project, &s.Branches); err != nil {
+			return nil, fmt.Errorf("store: ProjectStats 扫描失败: %w", err)
 		}
-		names = append(names, n)
+		stats = append(stats, s)
 	}
-	return names, rows.Err()
+	return stats, rows.Err()
 }
