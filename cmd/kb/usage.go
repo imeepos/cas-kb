@@ -12,6 +12,7 @@ func usage() {
 		"  kb note get <路径> [--at 快照]\n" +
 		"  kb note rm <路径> [-m msg]\n" +
 		"  kb note ls [--dir 目录] [--json]   # 递归列出;JSON 含 path/标题/标签/派生摘要\n" +
+		"  kb link resolve <slug> [--at 快照] [--json]  # 解析链接 slug:全路径精确→叶名全库唯一→歧义报错\n" +
 		"  kb dir add <目录> [-m msg]         # 建目录(mkdir -p 语义)\n" +
 		"  kb dir ls [目录] [--json]          # 列出直接子项(目录在前)\n" +
 		"  kb dir rm <目录> [-m msg] [--force] # 删目录;非空需 --force 递归\n" +
