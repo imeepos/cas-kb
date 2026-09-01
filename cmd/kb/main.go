@@ -54,6 +54,12 @@ func main() {
 		must(cmdProject(ctx, args[1:]))
 	case "branch":
 		must(cmdBranch(ctx, args[1:]))
+	case "backup":
+		must(cmdBackup(ctx, args[1:]))
+	case "restore":
+		must(cmdRestore(ctx, args[1:]))
+	case "wipe":
+		must(cmdWipe(ctx, args[1:]))
 	case "help", "--help", "-h":
 		usage()
 	default:

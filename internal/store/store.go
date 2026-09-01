@@ -50,5 +50,9 @@ type Store interface {
 	BranchList(ctx context.Context, project string) ([]BranchRef, error)
 	BranchListAll(ctx context.Context) ([]BranchRef, error)
 	BranchDescribe(ctx context.Context, project, name, description string) error
+	// Wipe 清空全部业务数据并重新播种,等价全新初始化的库:
+	// 分支/对象/项目/元数据全部清空后,按 schema.sql 重写默认项目与 schema_version。
+	// 仅供 kb wipe 使用;调用方须自行确认破坏性语义。
+	Wipe(ctx context.Context) error
 	Close() error
 }

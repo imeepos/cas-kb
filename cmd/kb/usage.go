@@ -23,7 +23,10 @@ func usage() {
 		"  kb fsck\n" +
 		"  kb reset <分支名|地址|短标识>  # 回退分支指针,放弃其后修改\n" +
 		"  kb project ls [--json] | create <名称> [--desc 描述] | desc <名称> [描述]\n" +
-		"  kb branch ls [--json] | desc <名称> [描述]   # 当前项目作用域内\n\n" +
+		"  kb branch ls [--json] | desc <名称> [描述]   # 当前项目作用域内\n" +
+		"  kb backup [文件]        # 整库备份为 .ckb(JSONL,全库语义)\n" +
+		"  kb restore <文件> [--force]  # 恢复备份;目标非空需 --force(先清空)\n" +
+		"  kb wipe [--force]       # 清空整库并重置为全新库;需 --force\n\n" +
 		"环境变量:\n" +
 		"  KB_DSN       本地连接串(默认 postgres://postgres:postgres@127.0.0.1:5432/caskb)\n" +
 		"  KB_BRANCH    默认分支名(默认 main)\n" +

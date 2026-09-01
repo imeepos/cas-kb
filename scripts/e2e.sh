@@ -61,6 +61,13 @@ step "backup.sh";            BKF=$(bash "$REPO/scripts/backup.sh" "$E2E_DSN" | g
 step "restore.sh";           bash "$REPO/scripts/restore.sh" "$BKF" "${E2E_DB}_r" > /dev/null
 step "恢复库读回";           has "A1" "$(KB_DSN="${BASE_DSN%/*}/${E2E_DB}_r" $KB -p alpha note ls)"
 step "清理恢复库与备份";     psql "$ADMIN_DSN" -qAc "DROP DATABASE IF EXISTS ${E2E_DB}_r" > /dev/null; rm -f "$REPO/$BKF"
+step "kb backup";            BKF=$($KB backup | grep -oE '[^ ]+\.ckb' | head -1)
+step "kb wipe 预览不执行";   out=$($KB wipe); has "将清空" "$out"; has "A1" "$($KB -p alpha note ls)"
+step "kb wipe --force";      $KB wipe --force > /dev/null
+step "清空后为空";           has "(no notes)" "$($KB -p alpha note ls)"
+step "kb restore";           $KB restore "$BKF" > /dev/null
+step "恢复读回";            has "A1" "$($KB -p alpha note ls)"; has "task" "$($KB -p alpha note ls)"
+step "清理 .ckb";            rm -f "$BKF"
 step "gc + fsck";            out=$($KB gc); has "已备份" "$out"; has "完整,无问题" "$($KB fsck)"
 psql "$ADMIN_DSN" -qAc "DROP DATABASE IF EXISTS $E2E_DB" > /dev/null
 echo "E2E_GREEN"

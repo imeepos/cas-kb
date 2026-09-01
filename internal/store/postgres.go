@@ -34,3 +34,15 @@ func (p *PG) Close() error {
 	p.pool.Close()
 	return nil
 }
+
+// Wipe 清空全部业务数据(TRUNCATE 四表,单语句满足外键约束),
+// 再重跑 schema.sql 播种默认项目与 schema_version,结果等价全新初始化的库。
+func (p *PG) Wipe(ctx context.Context) error {
+	if _, err := p.pool.Exec(ctx, "TRUNCATE branches, objects, projects, meta"); err != nil {
+		return fmt.Errorf("store: Wipe 清空失败: %w", err)
+	}
+	if err := Migrate(ctx, p.pool); err != nil {
+		return fmt.Errorf("store: Wipe 后重新播种失败: %w", err)
+	}
+	return nil
+}

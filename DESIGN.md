@@ -150,9 +150,12 @@ cas-kb/
 | Has / Delete / List | Has 供遍历跳过;Delete 仅 GC 使用;List 供 GC/FSCK 全量扫描 |
 | ProjectCreate(name, description) / ProjectStats / ProjectDescribe | 建项目幂等(已存在等价空操作,可带描述);Stats 返回名称/描述/分支数;Describe 就地更新描述,不产生快照 |
 | BranchGet / BranchSet / BranchDelete / BranchList / BranchDescribe | 均按项目作用域(repo 层注入项目);BranchSet 是快照推进的唯一写路径,UPSERT 仅更新 addr/updated_at(**不覆盖 description**),目标对象不存在时报错(FK 兜底);BranchDescribe 就地更新分支描述;BranchList 返回的 BranchRef 含描述 |
+| Wipe | 清空全部业务数据(TRUNCATE 四表)并重跑 schema.sql 播种,等价全新初始化的库;仅供 kb wipe,调用方自负破坏性语义 |
 | Close | 释放连接 |
 
-**repo.Repo**(业务层):SetNote / RemoveNote / Note / NoteAt / ListNotes(均按全路径定位条目,M3.8 起)+ Mkdir / RemoveDir / DirLs / DirTree(目录操作)+ Commit / Log / Diff(路径级比较)/ Pull / GC / FSCK。写路径沿目录链 copy-on-write:只重写受影响子树,兄弟子树地址结构共享。
+**repo.Repo**(业务层):SetNote / RemoveNote / Note / NoteAt / ListNotes(均按全路径定位条目,M3.8 起)+ Mkdir / RemoveDir / DirLs / DirTree(目录操作)+ Commit / Log / Diff(路径级比较)/ Pull / GC / FSCK + DumpLibrary / RestoreLibrary(整库备份/恢复,M3.9)。写路径沿目录链 copy-on-write:只重写受影响子树,兄弟子树地址结构共享。
+
+**整库备份/恢复(M3.9)**:JSONL 流式格式(header 记 schema_version;对象行含 base64 字节;项目/分支行含描述)。导入时**逐对象重算哈希校验完整性**,损坏文件响亮拒绝;文件头 schema_version 不符拒绝并提示配套版本;目标库非空默认拒绝(`--force` 先 Wipe 覆盖);恢复完成后建议 fsck 复核。与 §8.3 的 pg_dump 脚本互为补充:原生格式跨后端可移植、无 psql 依赖、自带校验;pg_dump 保留全保真 DB 级备份。
 
 ## 6. 关键流程
 
@@ -238,7 +241,9 @@ cas-kb/
 
 ### 8.3 备份与恢复(正规化)
 
-- **备份统一入口** `./scripts/backup.sh [DSN]`:pg_dump 逻辑备份(含 objects/projects/branches/meta),产物固定写 `backups/`(git 忽略),文件名 `caskb-v<库版本>-backup-<时间戳>.sql` 并附 sha256——版本号进文件名,恢复时可识别配套的 kb 二进制
+- **两条备份路径**:① `kb backup [文件]` 原生导出(.ckb,JSONL;跨后端可移植、无 psql 依赖、恢复时逐对象校验哈希);② `./scripts/backup.sh [DSN]` pg_dump 全保真 DB 备份(产物写 `backups/`,git 忽略,文件名含库版本与时间戳并附 sha256)。两者都是全库语义
+- **恢复**:`kb restore <文件> [--force]`(非空库需 --force,先 Wipe)或 `./scripts/restore.sh <backup.sql> <目标库>`(导入全新库;旧 schema 备份会提示配套二进制)
+- **备份统一出口(脚本)** `./scripts/backup.sh`:pg_dump 逻辑备份(含 objects/projects/branches/meta),文件名 `caskb-v<库版本>-backup-<时间戳>.sql`——版本号进文件名,恢复时可识别配套的 kb 二进制
 - **恢复统一入口** `./scripts/restore.sh <backup.sql> <目标库>`:导入**全新库**(先删后建);备份属于旧 schema 时打印提醒(v4 门禁会拒绝旧库,需用对应版本的 kb 二进制访问)
 - **迁移口径**:不做自动迁移(库版本不符拒绝打开)。官方升级路径 = backup.sh 留档 → 清空/删库 → `kb init` 重建 → 数据按需重录或写一次性迁移工具;`meta 表存在但无版本行`(清空后)等价全新库放行
 - **硬性约定**:对含数据的存量库做任何迁移/升级验证前,必须先 backup.sh(或 pg_dump)备份,文件名含库版本与时间戳
