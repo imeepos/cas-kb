@@ -47,6 +47,10 @@ func noteLs(ctx context.Context, r *repo.Repo, args []string) error {
 	if err != nil {
 		return err
 	}
+	if len(refs) == 0 {
+		fmt.Println("(no notes)")
+		return nil
+	}
 	for _, ref := range refs {
 		fmt.Printf("%s\t%s\n", ref.Slug, ref.Note.Meta.Title)
 	}
