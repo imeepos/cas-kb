@@ -2,12 +2,17 @@ package repo
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"strings"
 
 	"github.com/imeepos/cas-kb/internal/hash"
 	"github.com/imeepos/cas-kb/internal/object"
 	"github.com/imeepos/cas-kb/internal/store"
 )
+
+// ErrAmbiguousRef 表示短标识命中多个快照,无法唯一解析。
+var ErrAmbiguousRef = errors.New("repo: 短标识匹配多个快照,请提供更长前缀")
 
 // LogEntry 是日志中的一条:快照地址与内容。
 type LogEntry struct {
@@ -51,10 +56,14 @@ func (r *Repo) Log(ctx context.Context) ([]LogEntry, error) {
 	return out, nil
 }
 
-// Resolve 把"分支名或 sha256 地址"解析为快照地址。
+// Resolve 把"分支名、完整快照地址或地址短标识"解析为快照地址。
+// 短标识即地址前缀(kb log 输出的首列);完整地址原样返回,存在性由读取时校验。
 func (r *Repo) Resolve(ctx context.Context, name string) (hash.Address, error) {
 	if strings.HasPrefix(name, string(hash.PrefixSha256)) {
-		return hash.Address(name), nil
+		if len(name) >= len(hash.PrefixSha256)+hash.HexLen {
+			return hash.Address(name), nil
+		}
+		return r.resolveByPrefix(ctx, name)
 	}
 	branches, err := r.st.BranchList(ctx)
 	if err != nil {
@@ -65,5 +74,29 @@ func (r *Repo) Resolve(ctx context.Context, name string) (hash.Address, error) {
 			return b.Addr, nil
 		}
 	}
-	return "", store.ErrBranchNotFound
+	return r.resolveByPrefix(ctx, name)
+}
+
+// resolveByPrefix 在全部快照对象中按地址前缀唯一匹配。
+func (r *Repo) resolveByPrefix(ctx context.Context, prefix string) (hash.Address, error) {
+	var match hash.Address
+	n := 0
+	err := r.st.List(ctx, func(info store.ObjectInfo) error {
+		if info.Kind == object.KindSnapshot && strings.HasPrefix(string(info.Addr), prefix) {
+			match = info.Addr
+			n++
+		}
+		return nil
+	})
+	if err != nil {
+		return "", err
+	}
+	switch n {
+	case 1:
+		return match, nil
+	case 0:
+		return "", fmt.Errorf("repo: 引用 %q 既不是分支也不是快照短标识: %w", prefix, store.ErrBranchNotFound)
+	default:
+		return "", ErrAmbiguousRef
+	}
 }

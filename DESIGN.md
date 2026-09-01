@@ -86,7 +86,7 @@ MVP 的 tree 是扁平一层(slug → note);嵌套路径目录为演进项。
 ### 4.3 一致性与并发
 
 - 写入流程「读头 → 写对象 → 建快照 → 推进分支」中,对象写入幂等(同地址冲突忽略),失败重试安全
-- 并发提交可能丢更新(后写覆盖):MVP 接受 last-writer-wins;M2 提供乐观并发——提交时声明期望父快照,不匹配则拒绝并要求重试
+- 并发提交可能丢更新(后写覆盖):MVP 接受 last-writer-wins;乐观并发(提交时声明期望父快照,不匹配则拒绝)列为演进项,本期未实现
 - 隔离级别 read committed 足够;分支推进是单行 UPSERT,无复合事务
 
 ### 4.4 大内容
@@ -94,7 +94,7 @@ MVP 的 tree 是扁平一层(slug → note);嵌套路径目录为演进项。
 - 单 blob 建议上限 16MB(PG 字段与内存友好)
 - 超长文档按 64KB 分块、tree 结构挂载(演进项;note.body 预留 chunked 形态,不改地址规则)
 
-## 5. Go 工程结构(仅结构与职责,不含实现)
+## 5. Go 工程结构(M1–M3 已按此结构实现)
 
 ```
 cas-kb/
@@ -145,7 +145,7 @@ cas-kb/
 
 通信量 = 差异对象数 + 路径长度,与库总量无关——百万条笔记改一条,流量约等于一条。
 
-### 6.3 合并(M2)
+### 6.3 合并(演进项,本期未实现)
 
 - 共同祖先 = 快照 DAG 的最近公共祖先
 - tree 级 3-way:双方地址相同 = 未改;单方改 = 取改方;双方改且不同 = 冲突,升级到条目级人工裁决
@@ -155,7 +155,7 @@ cas-kb/
 
 - 从全部分支头出发做可达性标记(snapshot → tree → note → blob,parents 递归)
 - 未标记对象删除并计数
-- 误删保护:GC 前自动导出分支表(可配开关);MVP 不做 reflog
+- 误删保护:GC 清扫前自动导出分支表为 JSON 备份文件(配置项 KB_GC_PROTECT,默认 on;备份失败则中止 GC);MVP 不做 reflog
 
 ### 6.5 FSCK
 
@@ -181,7 +181,9 @@ cas-kb/
 |---|---|---|
 | KB_DSN | `postgres://postgres:postgres@127.0.0.1:5432/caskb?sslmode=disable` | 连接串;指向 102 时替换主机部分 |
 | KB_BRANCH | `main` | 默认分支 |
-| KB_GC_PROTECT | `on` | GC 前导出分支表 |
+| KB_GC_PROTECT | `on` | GC 清扫前自动导出分支表备份;设为 off/0/false 关闭 |
+| KB_REMOTE_DSN | (无) | `kb pull` 的远端连接串(也可作为命令行参数传入) |
+| KB_TEST_DSN | (无) | 集成测试基库连接串;未设置时跳过集成测试(仅测试使用) |
 
 指向 102 的示例:`postgres://caskb_app:<密码>@192.168.x.102:5432/caskb?sslmode=disable`。
 安全要求:专用账号 `caskb_app`(只授 caskb 库权限)、密码走 scram-sha-256、内网传输是否启用 TLS 按内网策略定;**凭据一律走环境变量,不入库不入仓**。
