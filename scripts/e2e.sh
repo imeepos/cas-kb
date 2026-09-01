@@ -88,6 +88,13 @@ step "kb restore";           $KB restore "$BKF" > /dev/null
 step "恢复读回";             has "A1" "$($KB -p alpha note ls)"; has "go/" "$($KB -p alpha dir tree)"
 step "清理 .ckb";            rm -f "$BKF"
 
+# ---- 跨版本恢复(升级演练结论:header ∈ [4, 当前] 可恢复)----
+step "跨版本备份(header 改写为 v4)"; CVB=$($KB backup | grep -oE '[^ ]+\.ckb' | head -1)
+sed 's/"schema_version":5,/"schema_version":4,/' "$CVB" > cv4.ckb
+step "v4 备份恢复成功并提示升级"; out=$($KB restore cv4.ckb --force); has "恢复完成" "$out"; has "schema v4" "$out"
+step "跨版本恢复后数据可读";   has "A1" "$($KB -p alpha note ls)"
+step "清理跨版本产物";         rm -f cv4.ckb "$CVB"
+
 # ---- PostgreSQL 专属:pg_dump 全保真备份/恢复 ----
 if [ "$MODE_SQLITE" = 0 ]; then
   step "backup.sh";          BKF=$(bash "$REPO/scripts/backup.sh" "$E2E_DSN" | grep -oE 'backups/[^ ]+' | head -1)
