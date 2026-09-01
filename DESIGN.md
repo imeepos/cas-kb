@@ -28,7 +28,7 @@
 
 - **内容寻址**:`addr = "sha256:" + hex(sha256(规范字节))`;算法前缀为未来升级 BLAKE3 留门
 - **Merkle 结构**:父节点地址由子节点地址决定,任何叶子变动都会向上传播到根
-- **唯一可变点**:整个系统只有 `branches` 表可变(名字 → 快照地址)。备份、同步、并发全部归结为管理这张小表
+- **唯一可变点**:整个系统只有 `branches` 表可变((项目, 名字) → 快照地址)。备份、同步、并发全部归结为管理这张小表
 
 ## 3. 对象模型
 
@@ -71,11 +71,14 @@ MVP 的 tree 是扁平一层(slug → note);嵌套路径目录为演进项。
 
 ### 4.1 表结构
 
-三张表(完整 DDL 见 [schema.sql](schema.sql)):
+四张表(完整 DDL 见 [schema.sql](schema.sql)):
 
-- **objects** — `addr(text PK), kind, size, data(bytea)`;只增不删(仅 GC 清扫)
-- **branches** — `name(text PK), addr(→ objects), updated_at`;**全库唯一可变表**
+- **objects** — `addr(text PK), kind, size, data(bytea)`;只增不删(仅 GC 清扫);全局共享、跨项目去重
+- **projects** — `name(text PK), created_at`;项目隔离的一等实体(schema v2 新增)
+- **branches** — `(project, name)(复合主键), addr(→ objects), updated_at`;**全库唯一可变表**,按项目划分命名空间
 - **meta** — `schema_version` 等键值;加载时版本不符直接拒绝(误配置报错要响)
+
+> 版本约定:库 schema 版本(meta.schema_version,当前 2)与对象编码版本(object.SchemaVersion)相互独立;本次 v2 仅动表结构,对象编码与地址不变。
 
 ### 4.2 为什么 Postgres 合适
 
@@ -93,6 +96,15 @@ MVP 的 tree 是扁平一层(slug → note);嵌套路径目录为演进项。
 
 - 单 blob 建议上限 16MB(PG 字段与内存友好)
 - 超长文档按 64KB 分块、tree 结构挂载(演进项;note.body 预留 chunked 形态,不改地址规则)
+
+### 4.5 项目隔离(schema v2)
+
+- **隔离机制**:分支按项目划分命名空间;每个项目的快照 DAG 由本项目分支头可达,数据隔离由可达性天然获得
+- **对象全局共享**:objects 不标注归属,跨项目相同内容共享同一份存储(去重红利保留)
+- **默认项目**:default;v1 存量库打开时自动迁移,存量分支全部落入 default,旧用法行为不变
+- **项目内解析**:短标识解析限定在当前项目分支头的可达集内,不串项目
+- **GC 全局**:对象共享时按项目清扫会误删他项目对象,GC 始终从全部项目的分支头出发标记
+- **跨项目搬运**:同库内跨项目 pull 只推进分支指针、零对象传输,充当知识共享通道
 
 ## 5. Go 工程结构(M1–M3 已按此结构实现)
 
@@ -118,7 +130,7 @@ cas-kb/
 | Put(kind, data) → addr | 幂等;同地址重复写等价于空操作 |
 | Get(addr) → (data, kind) | 不存在返回哨兵错误 NotFound;kind 必须合法 |
 | Has / Delete / List | Has 供遍历跳过;Delete 仅 GC 使用;List 供 GC/FSCK 全量扫描 |
-| BranchGet / BranchSet / BranchDelete / BranchList | BranchSet 是唯一写路径,UPSERT;目标对象不存在时报错(FK 兜底) |
+| BranchGet / BranchSet / BranchDelete / BranchList | 均按项目作用域(repo 层注入项目);BranchSet 是唯一写路径,UPSERT;目标对象不存在时报错(FK 兜底) |
 | Close | 释放连接 |
 
 **repo.Repo**(业务层):PutNote / SetNote / RemoveNote / Note / ListNotes / Commit / Log / Diff / Pull / GC / FSCK。
@@ -153,7 +165,7 @@ cas-kb/
 
 ### 6.4 GC(标记-清扫)
 
-- 从全部分支头出发做可达性标记(snapshot → tree → note → blob,parents 递归)
+- 从**所有项目**的全部分支头出发做可达性标记(snapshot → tree → note → blob,parents 递归);对象共享,禁止按项目清扫
 - 未标记对象删除并计数
 - 误删保护:GC 清扫前自动导出分支表为 JSON 备份文件(配置项 KB_GC_PROTECT,默认 on;备份失败则中止 GC);MVP 不做 reflog
 - 保护分层:CLI 默认开启;repo 库层默认关闭,由调用方显式开启;备份文件不自动清理,由运维按保留策略归档或删除
@@ -191,6 +203,7 @@ cas-kb/
 | KB_GC_PROTECT | `on` | GC 清扫前自动导出分支表备份;设为 off/0/false 关闭 |
 | KB_REMOTE_DSN | (无) | `kb pull` 的远端连接串(也可作为命令行参数传入) |
 | KB_TEST_DSN | (无) | 集成测试基库连接串;未设置时跳过集成测试(仅测试使用) |
+| KB_PROJECT | `default` | 项目作用域(M3.5):note/log/diff/gc/fsck 等命令只作用于该项目;亦可用 -p 按命令覆盖 |
 
 指向 102 的示例:`postgres://caskb_app:<密码>@192.168.x.102:5432/caskb?sslmode=disable`。
 安全要求:专用账号 `caskb_app`(只授 caskb 库权限)、密码走 scram-sha-256、内网传输是否启用 TLS 按内网策略定;**凭据一律走环境变量,不入库不入仓**。
@@ -219,5 +232,6 @@ cas-kb/
 | Merkle 树 | 父节点哈希由子节点哈希构成的树,根哈希代表整体 |
 | 快照 snapshot | 全库一个版本的命名(root tree 地址) |
 | slug | 人类可读的条目名,链接解析的键 |
+| 项目 project | 知识库的命名空间单位;分支与版本按项目隔离,对象跨项目共享去重 |
 | fast-forward | 本地头是远端头的祖先时,直接推进分支无需合并 |
 | 3-way merge | 基于共同祖先的三方合并 |
