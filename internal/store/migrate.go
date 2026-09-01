@@ -2,9 +2,11 @@ package store
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	caskb "github.com/imeepos/cas-kb"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -48,6 +50,10 @@ func rejectIncompatibleVersion(ctx context.Context, pool *pgxpool.Pool) error {
 	}
 	var v string
 	err = pool.QueryRow(ctx, "SELECT value FROM meta WHERE key = 'schema_version'").Scan(&v)
+	if errors.Is(err, pgx.ErrNoRows) {
+		// meta 表在但无版本行(如按指引清空该库后):等价全新库,交由 schema.sql 初始化
+		return nil
+	}
 	if err != nil {
 		return fmt.Errorf("store: 读取 schema_version 失败: %w", err)
 	}
