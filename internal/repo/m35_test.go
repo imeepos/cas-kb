@@ -12,7 +12,7 @@ func TestM35_ProjectsIsolated(t *testing.T) {
 	ctx := context.Background()
 	s, _ := freshStore(t)
 	for _, p := range []string{"alpha", "beta"} {
-		if err := s.ProjectCreate(ctx, p); err != nil {
+		if err := s.ProjectCreate(ctx, p, ""); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -65,7 +65,7 @@ func TestM35_ShortIDNotCrossProject(t *testing.T) {
 	ctx := context.Background()
 	s, _ := freshStore(t)
 	for _, p := range []string{"alpha", "beta"} {
-		if err := s.ProjectCreate(ctx, p); err != nil {
+		if err := s.ProjectCreate(ctx, p, ""); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -91,7 +91,7 @@ func TestM35_CrossProjectPullZeroTransfer(t *testing.T) {
 	ctx := context.Background()
 	s, _ := freshStore(t)
 	for _, p := range []string{"alpha", "beta"} {
-		if err := s.ProjectCreate(ctx, p); err != nil {
+		if err := s.ProjectCreate(ctx, p, ""); err != nil {
 			t.Fatal(err)
 		}
 	}

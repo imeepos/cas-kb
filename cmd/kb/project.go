@@ -29,7 +29,7 @@ func cmdProject(ctx context.Context, args []string) error {
 		if len(args) < 2 {
 			return fmt.Errorf("project create: 缺少项目名")
 		}
-		if err := s.ProjectCreate(ctx, args[1]); err != nil {
+		if err := s.ProjectCreate(ctx, args[1], ""); err != nil {
 			return err
 		}
 		fmt.Printf("项目 %s 已就绪\n", args[1])
