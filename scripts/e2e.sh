@@ -1,6 +1,9 @@
 #!/bin/bash
 # cas-kb 端到端验收:临时目录 + 临时库,跑完整生命周期;产物不入库。
-# 用法:./scripts/e2e.sh [基库 DSN](默认取 KB_DSN,再退回本地 5432/caskb)
+# 用法:./scripts/e2e.sh [postgres://…]
+#   无参数(默认)→ SQLite 后端(临时库文件,零外部依赖)
+#   postgres://…   → PostgreSQL 后端(临时库;额外覆盖 pg_dump backup.sh/restore.sh)
+# 也可经 KB_DSN 传入 postgres:// 启用 PG 模式。
 set -euo pipefail
 # Homebrew 工具(psql/pg_dump/go/gofmt)可能不在非交互 shell 的 PATH 里,逐个补齐
 for _d in /opt/homebrew/bin /usr/local/bin /usr/local/go/bin; do
@@ -9,25 +12,41 @@ done
 export PATH
 cd "$(dirname "$0")/.."
 REPO="$(pwd)"
-BASE_DSN="${1:-${KB_DSN:-postgres://postgres:postgres@127.0.0.1:5432/caskb?sslmode=disable}}"
-ADMIN_DSN="${BASE_DSN%/*}/postgres"
-E2E_DB="caskb_e2e_$(date +%s)_$$"
-E2E_DSN="${BASE_DSN%/*}/$E2E_DB"
-command -v psql >/dev/null || { echo "e2e 需要 psql"; exit 1; }
+
+BASE_DSN="${1:-${KB_DSN:-}}"
+MODE_SQLITE=1
+case "$BASE_DSN" in
+  postgres://*|postgresql://*) MODE_SQLITE=0 ;;
+esac
+
 WORK="$(mktemp -d)"
-trap 'rm -rf "$WORK"' EXIT
+cleanup() { rm -rf "$WORK"; }
+trap cleanup EXIT
 echo "== 构建 =="
 go build -o "$WORK/kb" ./cmd/kb
-echo "== 临时库 $E2E_DB =="
-psql "$ADMIN_DSN" -qAc "DROP DATABASE IF EXISTS $E2E_DB"
-psql "$ADMIN_DSN" -qAc "CREATE DATABASE $E2E_DB"
-export KB_DSN="$E2E_DSN"
-cd "$WORK"
 KB="$WORK/kb"
+
+if [ "$MODE_SQLITE" = 0 ]; then
+  ADMIN_DSN="${BASE_DSN%/*}/postgres"
+  E2E_DB="caskb_e2e_$(date +%s)_$$"
+  E2E_DSN="${BASE_DSN%/*}/$E2E_DB"
+  command -v psql >/dev/null || { echo "e2e(PG) 需要 psql"; exit 1; }
+  echo "== 临时库 $E2E_DB(PostgreSQL)=="
+  psql "$ADMIN_DSN" -qAc "DROP DATABASE IF EXISTS $E2E_DB"
+  psql "$ADMIN_DSN" -qAc "CREATE DATABASE $E2E_DB"
+  cleanup() { psql "$ADMIN_DSN" -qAc "DROP DATABASE IF EXISTS $E2E_DB" >/dev/null; rm -rf "$WORK"; }
+  export KB_DSN="$E2E_DSN"
+else
+  echo "== 临时库文件(SQLite)=="
+  export KB_DSN="sqlite:$WORK/e2e.db"
+fi
+cd "$WORK"
 step() { echo "--- $1"; }
 has() { echo "$2" | grep -qF "$1" || { echo "断言失败: 期望包含 [$1],实际: $2"; exit 1; }; }
+
 step "version";              has "kb " "$($KB version)"
 step "init";                 $KB init > /dev/null
+step "init 显示后端";         out=$($KB init); if [ "$MODE_SQLITE" = 0 ]; then has "postgres" "$out"; else has "sqlite" "$out"; fi
 step "project create alpha"; $KB project create alpha --desc "e2e 演练项目" > /dev/null
 step "-p alpha note set A1"; $KB -p alpha note set task --title A1 --body v1 -m add1 > /dev/null
 S1=$($KB -p alpha log | tail -1 | awk '{print $1}')
@@ -44,7 +63,7 @@ step "project ls --json";    jout=$($KB project ls --json); has '"description": 
 step "branch desc 设置";     $KB -p alpha branch desc main 工作线 > /dev/null
 step "branch ls --json";     bout=$($KB -p alpha branch ls --json); has '"description": "工作线"' "$bout"
 step "note ls --json 摘要";  has '"summary": "v1"' "$($KB -p alpha note ls --json)"
-# ---- M3.8 目录层级(schema v4)----
+# ---- M3.8 目录层级 ----
 step "dir add go";           $KB -p alpha dir add go > /dev/null
 D0=$($KB -p alpha log | head -1 | awk '{print $1}')
 step "嵌套 note set";        $KB -p alpha note set go/concurrency/channel --title Chan --body cs -m add-chan > /dev/null
@@ -58,17 +77,24 @@ step "dir rm --force";       $KB -p alpha dir rm go --force > /dev/null
 if echo "$($KB -p alpha note ls)" | grep -qF "channel"; then echo "断言失败: force 删除后不应再有条目"; exit 1; fi
 step "根目录仍存 A1";        has "A1" "$($KB -p alpha note ls)"
 step "dir add 幂等";         $KB -p alpha dir add go > /dev/null
-step "backup.sh";            BKF=$(bash "$REPO/scripts/backup.sh" "$E2E_DSN" | grep -oE 'backups/[^ ]+' | head -1)
-step "restore.sh";           bash "$REPO/scripts/restore.sh" "$BKF" "${E2E_DB}_r" > /dev/null
-step "恢复库读回";           has "A1" "$(KB_DSN="${BASE_DSN%/*}/${E2E_DB}_r" $KB -p alpha note ls)"
-step "清理恢复库与备份";     psql "$ADMIN_DSN" -qAc "DROP DATABASE IF EXISTS ${E2E_DB}_r" > /dev/null; rm -f "$REPO/$BKF"
+
+# ---- M3.9 库级运维(原生 .ckb,跨后端)----
 step "kb backup";            BKF=$($KB backup | grep -oE '[^ ]+\.ckb' | head -1)
-step "kb wipe 预览不执行";   out=$($KB wipe); has "将清空" "$out"; has "A1" "$($KB -p alpha note ls)"
+step "wipe 预览不动数据";     out=$($KB wipe); has "将清空" "$out"
+if ! echo "$($KB -p alpha note ls)" | grep -qF "A1"; then echo "断言失败: 无 --force 的 wipe 不得清库"; exit 1; fi
 step "kb wipe --force";      $KB wipe --force > /dev/null
 step "清空后为空";           has "(no notes)" "$($KB -p alpha note ls)"
 step "kb restore";           $KB restore "$BKF" > /dev/null
-step "恢复读回";            has "A1" "$($KB -p alpha note ls)"; has "task" "$($KB -p alpha note ls)"
+step "恢复读回";             has "A1" "$($KB -p alpha note ls)"; has "go/" "$($KB -p alpha dir tree)"
 step "清理 .ckb";            rm -f "$BKF"
+
+# ---- PostgreSQL 专属:pg_dump 全保真备份/恢复 ----
+if [ "$MODE_SQLITE" = 0 ]; then
+  step "backup.sh";          BKF=$(bash "$REPO/scripts/backup.sh" "$E2E_DSN" | grep -oE 'backups/[^ ]+' | head -1)
+  step "restore.sh";         bash "$REPO/scripts/restore.sh" "$BKF" "${E2E_DB}_r" > /dev/null
+  step "恢复库读回";         has "A1" "$(KB_DSN="${BASE_DSN%/*}/${E2E_DB}_r" $KB -p alpha note ls)"
+  step "清理恢复库与备份";   psql "$ADMIN_DSN" -qAc "DROP DATABASE IF EXISTS ${E2E_DB}_r" > /dev/null; rm -f "$REPO/$BKF"
+fi
+
 step "gc + fsck";            out=$($KB gc); has "已备份" "$out"; has "完整,无问题" "$($KB fsck)"
-psql "$ADMIN_DSN" -qAc "DROP DATABASE IF EXISTS $E2E_DB" > /dev/null
 echo "E2E_GREEN"
