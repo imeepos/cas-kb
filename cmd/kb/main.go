@@ -38,6 +38,8 @@ func main() {
 		must(cmdNote(ctx, args[1:]))
 	case "link":
 		must(cmdLink(ctx, args[1:]))
+	case "search":
+		must(cmdSearch(ctx, args[1:]))
 	case "dir":
 		must(cmdDir(ctx, args[1:]))
 	case "log":
