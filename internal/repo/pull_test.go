@@ -9,7 +9,7 @@ import (
 )
 
 // seedRemoteFastForward 建远端 r1/r2 两条笔记,返回本地与远端仓库。
-func seedRemoteFastForward(t *testing.T) (*Repo, *store.PG, *Repo) {
+func seedRemoteFastForward(t *testing.T) (*Repo, store.Store, *Repo) {
 	ctx := context.Background()
 	local, _, _ := newRepo(t, "m3_pull_ff")
 	remote := openRemote(t)

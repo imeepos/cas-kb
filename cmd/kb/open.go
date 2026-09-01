@@ -3,12 +3,11 @@ package main
 import (
 	"context"
 	"os"
+	"path/filepath"
 
 	"github.com/imeepos/cas-kb/internal/repo"
 	"github.com/imeepos/cas-kb/internal/store"
 )
-
-const defaultDSN = "postgres://postgres:postgres@127.0.0.1:5432/caskb?sslmode=disable"
 
 // projectOverride 由全局参数 -p 设置,优先于 KB_PROJECT。
 var projectOverride string
@@ -32,17 +31,35 @@ func branchName() string {
 	return "main"
 }
 
-// openStore 打开(含迁移)本地存储。
-func openStore(ctx context.Context) (*store.PG, error) {
-	dsn := os.Getenv("KB_DSN")
-	if dsn == "" {
-		dsn = defaultDSN
+// defaultSQLitePath 返回默认 SQLite 库文件路径:
+// XDG_DATA_HOME(或 ~/.local/share)/caskb/caskb.db。
+func defaultSQLitePath() string {
+	if dir := os.Getenv("XDG_DATA_HOME"); dir != "" {
+		return filepath.Join(dir, "caskb", "caskb.db")
 	}
-	return store.Open(ctx, dsn)
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "caskb.db" // 无家目录的极端环境:退到工作目录
+	}
+	return filepath.Join(home, ".local", "share", "caskb", "caskb.db")
+}
+
+// effectiveDSN 返回生效连接串:KB_DSN > sqlite 默认路径。
+// KB_DSN 指向 postgres:// 时即使用 PostgreSQL 后端,其余形态按 SQLite 路径处理。
+func effectiveDSN() string {
+	if dsn := os.Getenv("KB_DSN"); dsn != "" {
+		return dsn
+	}
+	return "sqlite:" + defaultSQLitePath()
+}
+
+// openStore 打开(含迁移)本地存储,后端由 DSN 分派(默认 SQLite)。
+func openStore(ctx context.Context) (store.Store, error) {
+	return store.Open(ctx, effectiveDSN())
 }
 
 // openRepo 打开本地存储并构造仓库对象,调用方负责 Close。
-func openRepo(ctx context.Context) (*repo.Repo, *store.PG, error) {
+func openRepo(ctx context.Context) (*repo.Repo, store.Store, error) {
 	s, err := openStore(ctx)
 	if err != nil {
 		return nil, nil, err

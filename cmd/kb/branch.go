@@ -29,7 +29,7 @@ func cmdBranch(ctx context.Context, args []string) error {
 }
 
 // branchLs 列出当前项目作用域的全部分支;--json 输出机器可读清单(DESIGN §4.6)。
-func branchLs(ctx context.Context, s *store.PG, args []string) error {
+func branchLs(ctx context.Context, s store.Store, args []string) error {
 	f, err := parseFlags(args, nil)
 	if err != nil {
 		return err
@@ -57,7 +57,7 @@ func branchLs(ctx context.Context, s *store.PG, args []string) error {
 }
 
 // branchDesc 读取或就地设置分支描述:desc <名称> [描述文本...]。
-func branchDesc(ctx context.Context, s *store.PG, args []string) error {
+func branchDesc(ctx context.Context, s store.Store, args []string) error {
 	if len(args) < 1 {
 		return fmt.Errorf("branch desc: 缺少分支名")
 	}

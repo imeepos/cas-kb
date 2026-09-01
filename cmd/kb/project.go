@@ -31,7 +31,7 @@ func cmdProject(ctx context.Context, args []string) error {
 }
 
 // projectLs 列出项目(名称/描述/分支数);--json 输出机器可读清单(DESIGN §4.6)。
-func projectLs(ctx context.Context, s *store.PG, args []string) error {
+func projectLs(ctx context.Context, s store.Store, args []string) error {
 	f, err := parseFlags(args, nil)
 	if err != nil {
 		return err
@@ -59,7 +59,7 @@ func projectLs(ctx context.Context, s *store.PG, args []string) error {
 }
 
 // projectCreate 创建项目,可带 --desc 描述;已存在等价空操作(不覆盖描述)。
-func projectCreate(ctx context.Context, s *store.PG, args []string) error {
+func projectCreate(ctx context.Context, s store.Store, args []string) error {
 	f, err := parseFlags(args, map[string]bool{"--desc": true})
 	if err != nil {
 		return err
@@ -79,7 +79,7 @@ func projectCreate(ctx context.Context, s *store.PG, args []string) error {
 }
 
 // projectDesc 读取或就地设置项目描述:desc <名称> [描述文本...]。
-func projectDesc(ctx context.Context, s *store.PG, args []string) error {
+func projectDesc(ctx context.Context, s store.Store, args []string) error {
 	if len(args) < 1 {
 		return fmt.Errorf("project desc: 缺少项目名")
 	}

@@ -9,10 +9,10 @@ import (
 	"github.com/imeepos/cas-kb/internal/testdb"
 )
 
-// openTest 打开一个独立测试库(每个用例独立新库)。
+// openTest 打开一个独立测试库(每个用例独立新库;PostgreSQL,需 KB_TEST_DSN)。
 func openTest(t *testing.T) *PG {
 	ctx := context.Background()
-	s, err := Open(ctx, testdb.New(t))
+	s, err := openPostgres(ctx, testdb.New(t))
 	if err != nil {
 		t.Fatalf("打开存储失败: %v", err)
 	}
@@ -102,7 +102,7 @@ func TestM1_TamperDetectable(t *testing.T) {
 func TestM1_SchemaVersionMismatchRejects(t *testing.T) {
 	ctx := context.Background()
 	dsn := testdb.New(t)
-	s, err := Open(ctx, dsn)
+	s, err := openPostgres(ctx, dsn)
 	if err != nil {
 		t.Fatalf("打开存储失败: %v", err)
 	}
@@ -113,7 +113,7 @@ func TestM1_SchemaVersionMismatchRejects(t *testing.T) {
 	t.Cleanup(func() {
 		_, _ = s.pool.Exec(ctx, "UPDATE meta SET value = '1' WHERE key = 'schema_version'")
 	})
-	if _, err := Open(ctx, dsn); err == nil {
+	if _, err := openPostgres(ctx, dsn); err == nil {
 		t.Fatal("schema_version 不匹配时应拒绝打开")
 	}
 }

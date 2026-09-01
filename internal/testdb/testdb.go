@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"net/url"
 	"os"
+	"path/filepath"
+	"strings"
 	"sync/atomic"
 	"testing"
 
@@ -24,6 +26,19 @@ func DSN(t *testing.T) string {
 		t.Skip("KB_TEST_DSN 未设置,跳过集成测试")
 	}
 	return dsn
+}
+
+// NewSQLite 派生一个全新的 SQLite 测试库文件(t.TempDir 内,结束自动清理)。
+// SQLite 用例零外部依赖,go test 默认即跑。
+func NewSQLite(t *testing.T) string {
+	t.Helper()
+	n := atomic.AddInt64(&counter, 1)
+	return "sqlite:" + filepath.Join(t.TempDir(), fmt.Sprintf("caskb_test_%d.db", n))
+}
+
+// IsSQLite 报告 DSN 是否为 SQLite 形态(非 postgres:// 即 SQLite)。
+func IsSQLite(dsn string) bool {
+	return !strings.HasPrefix(dsn, "postgres://") && !strings.HasPrefix(dsn, "postgresql://")
 }
 
 // New 派生一个全新的测试数据库,返回其 DSN,测试结束自动删除。

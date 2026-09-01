@@ -11,7 +11,7 @@ import (
 
 const fixedTime = int64(1700000000)
 
-func newRepo(t *testing.T, branch string) (*Repo, *store.PG, string) {
+func newRepo(t *testing.T, branch string) (*Repo, store.Store, string) {
 	dsn := freshDB(t)
 	ctx := context.Background()
 	s, err := store.Open(ctx, dsn)

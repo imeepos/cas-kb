@@ -30,7 +30,8 @@ func usage() {
 		"  kb update [--yes] [--repo owner/name]  # 检查 GitHub 最新 Release;--yes 下载并替换本二进制\n" +
 		"  kb version              # 显示版本号\n\n" +
 		"环境变量:\n" +
-		"  KB_DSN       本地连接串(默认 postgres://postgres:postgres@127.0.0.1:5432/caskb)\n" +
+		"  KB_DSN       库连接串:SQLite 路径(默认 ~/.local/share/caskb/caskb.db;可加 sqlite: 前缀)\n" +
+		"               或 postgres://… 切换 PostgreSQL 后端\n" +
 		"  KB_BRANCH    默认分支名(默认 main)\n" +
 		"  KB_REMOTE_DSN pull 的远端连接串(或作为参数传入)\n" +
 		"  KB_GC_PROTECT GC 前自动备份分支表(on/off,默认 on)\n" +

@@ -10,7 +10,7 @@ import (
 )
 
 // freshStore 打开一个独立测试库,返回存储与其 DSN。
-func freshStore(t *testing.T) (*store.PG, string) {
+func freshStore(t *testing.T) (store.Store, string) {
 	dsn := freshDB(t)
 	ctx := context.Background()
 	s, err := store.Open(ctx, dsn)
@@ -22,7 +22,7 @@ func freshStore(t *testing.T) (*store.PG, string) {
 }
 
 // seedOrphanAndNote 写入一个孤儿对象和一篇可达笔记,返回孤儿地址。
-func seedOrphanAndNote(t *testing.T, ctx context.Context, r *Repo, s *store.PG) hash.Address {
+func seedOrphanAndNote(t *testing.T, ctx context.Context, r *Repo, s store.Store) hash.Address {
 	t.Helper()
 	orphan, err := s.Put(ctx, object.KindBlob, []byte("gc-protect orphan body"))
 	if err != nil {

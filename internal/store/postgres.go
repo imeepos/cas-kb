@@ -12,8 +12,9 @@ type PG struct {
 	pool *pgxpool.Pool
 }
 
-// Open 连接 DSN,执行迁移与 schema 校验,返回可用的存储实现。
-func Open(ctx context.Context, dsn string) (*PG, error) {
+// openPostgres 连接 DSN,执行迁移与 schema 校验,返回可用的 PostgreSQL 实现。
+// 对外统一入口是 open.go 的 Open(按 DSN 前缀分派后端)。
+func openPostgres(ctx context.Context, dsn string) (*PG, error) {
 	pool, err := pgxpool.New(ctx, dsn)
 	if err != nil {
 		return nil, fmt.Errorf("store: 连接失败: %w", err)
