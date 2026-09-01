@@ -73,7 +73,8 @@ jobs:
           EXT=''
           [ "$GOOS" = windows ] && EXT='.exe'
           BIN="kb${EXT}"
-          go build -trimpath -ldflags '-s -w' -o "$BIN" ./cmd/kb
+          # -X 注入版本号(tag),供 kb version / kb update 比较用
+          go build -trimpath -ldflags "-s -w -X main.version=${GITHUB_REF_NAME}" -o "$BIN" ./cmd/kb
           STAGE="kb-${VERSION}-${GOOS}-${GOARCH}"
           mkdir "$STAGE"
           cp "$BIN" README.md "$STAGE/"

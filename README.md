@@ -68,6 +68,12 @@
     ./kb dir rm go --force               # 递归删除整棵子树
     ./kb gc && ./kb fsck                 # 回收不可达对象 + 全库巡检
 
+在线更新(Release 版二进制):
+
+    ./kb version                         # 当前版本与平台
+    ./kb update                          # 在线检查 GitHub 最新 Release
+    ./kb update --yes                    # 下载、校验 sha256 并替换本二进制
+
 多项目作用域:
 
     ./kb project create notes --desc "另一个知识域"
@@ -82,7 +88,7 @@
     ./scripts/backup.sh [DSN]                            # 库备份 → backups/(git 忽略),文件名含库版本与时间戳
     ./scripts/restore.sh <backup.sql> <目标库>           # 恢复到全新库;旧 schema 备份会提示配套二进制
 
-> 提示:仓库根目录的 `kb` 二进制不会随源码自动更新,`git pull` 后执行 `go build -o kb ./cmd/kb` 重建;`./kb --help` / `-h` 随时查看当前用法。
+> 提示:仓库根目录的 `kb` 二进制不会随源码自动更新,`git pull` 后执行 `go build -o kb ./cmd/kb` 重建;Release 安装的二进制则可用 `./kb update --yes` 在线升级;`./kb --help` / `-h` 随时查看当前用法。
 
 ## 构建发布
 
@@ -94,6 +100,7 @@
 **交叉编译**(linux / darwin / windows × amd64 / arm64,CGO 关闭的静态二进制,
 产物 `kb-<版本>-<os>-<arch>` 归档)→ **创建 GitHub Release**(自动生成更新说明,
 附 `sha256sums.txt`)。Actions 页也支持手动 `workflow_dispatch` 试跑(只构建、不发布)。
+构建以 `-ldflags "-X main.version=<tag>"` 注入版本号:`kb version` 显示它,`kb update` 靠它与最新 Release 比较;本地 `go build` 的产物版本为 `dev`,只能查看、不参与比较。
 
 ## 环境假设
 

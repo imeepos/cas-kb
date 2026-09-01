@@ -60,6 +60,10 @@ func main() {
 		must(cmdRestore(ctx, args[1:]))
 	case "wipe":
 		must(cmdWipe(ctx, args[1:]))
+	case "update":
+		must(cmdUpdate(ctx, args[1:]))
+	case "version":
+		must(cmdVersion(ctx, args[1:]))
 	case "help", "--help", "-h":
 		usage()
 	default:

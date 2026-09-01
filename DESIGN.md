@@ -128,16 +128,17 @@
 
 ```
 cas-kb/
-├── cmd/kb/          CLI 入口:init / note / dir / log / diff / pull / gc / fsck / reset / project / branch
+├── cmd/kb/          CLI 入口:init / note / dir / log / diff / pull / gc / fsck / reset / project / branch / backup / restore / wipe / update / version
 ├── internal/
 │   ├── hash/        地址类型、sha256 封装、格式校验
 │   ├── object/      四类对象定义、规范编解码、结构校验
 │   ├── store/       存储接口 + postgres 实现 + 迁移
-│   └── repo/        业务层:提交、解析、日志、diff、pull、gc、fsck
+│   ├── repo/        业务层:提交、解析、日志、diff、pull、gc、fsck
+│   └── selfupdate/  在线自更新:Release 查询、版本比较、产物校验与二进制替换
 └── schema.sql       DDL 规格(迁移的权威来源)
 ```
 
-依赖方向:`cmd → repo → store/object → hash`;store 不依赖 repo。
+依赖方向:`cmd → repo → store/object → hash`;store 不依赖 repo;cmd 亦依赖 `selfupdate`(自更新,独立于存储链)。
 
 ### 5.1 接口契约(文字规格)
 
@@ -235,6 +236,8 @@ cas-kb/
 | KB_REMOTE_DSN | (无) | `kb pull` 的远端连接串(也可作为命令行参数传入) |
 | KB_TEST_DSN | (无) | 集成测试基库连接串;未设置时跳过集成测试(仅测试使用) |
 | KB_PROJECT | `default` | 项目作用域:note/log/diff/gc/fsck 等命令只作用于该项目;亦可用 -p 按命令覆盖 |
+| KB_UPDATE_REPO | `imeepos/cas-kb` | `kb update` 检查的 GitHub 仓库(owner/name),也可 --repo 按次覆盖 |
+| GITHUB_TOKEN | (无) | 可选;GitHub API 令牌,缓解匿名限流(仅 update 使用,只作请求头) |
 
 指向 102 的示例:`postgres://caskb_app:<密码>@192.168.x.102:5432/caskb?sslmode=disable`。
 安全要求:专用账号 `caskb_app`(只授 caskb 库权限)、密码走 scram-sha-256、内网传输是否启用 TLS 按内网策略定;**凭据一律走环境变量,不入库不入仓**。
@@ -249,6 +252,14 @@ cas-kb/
 - **硬性约定**:对含数据的存量库做任何迁移/升级验证前,必须先 backup.sh(或 pg_dump)备份,文件名含库版本与时间戳
 - branches 表极小可高频快照;objects 只增,增量备份友好
 - 恢复后先跑 fsck 再提供服务
+
+### 8.4 CLI 在线更新(kb update / kb version)
+
+- **版本号来源**:发布流水线以 `-ldflags "-X main.version=<tag>"` 注入;本地 `go build` 未注入时为 `dev`,`kb version` 打印版本与平台
+- **检查**:`kb update` 请求 GitHub API `repos/<仓库>/releases/latest`(不含 draft/prerelease),与当前版本逐段比较:数字段按数值,同数值带后缀(预发布)小于无后缀,缺段按 0 补齐;`dev` 构建只展示最新版不比较;已是最新则提示并正常退出
+- **升级**:`kb update --yes` 下载当前平台产物 `kb-<版本>-<os>-<arch>.tar.gz`(Windows 为 `.zip`)与 `sha256sums.txt`,边下边算 sha256,比对通过才从归档解出二进制,经「target→.old、新→target、删 .old」的 rename 序列原子替换;任一步失败保留原二进制。临时文件写在本二进制同目录(需目录写权限)
+- **仓库与限流**:默认 `imeepos/cas-kb`,`--repo owner/name` 或 `KB_UPDATE_REPO` 覆盖;匿名 API 有限流,可设 `GITHUB_TOKEN`(仅作请求头,不入盘不入库)
+- 更新只替换 CLI 本体,不触碰库 schema;版本升级涉及的库 schema 演进仍按 §8.3 迁移口径处理
 
 ## 9. 风险与权衡
 

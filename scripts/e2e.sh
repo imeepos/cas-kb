@@ -26,6 +26,7 @@ cd "$WORK"
 KB="$WORK/kb"
 step() { echo "--- $1"; }
 has() { echo "$2" | grep -qF "$1" || { echo "断言失败: 期望包含 [$1],实际: $2"; exit 1; }; }
+step "version";              has "kb " "$($KB version)"
 step "init";                 $KB init > /dev/null
 step "project create alpha"; $KB project create alpha --desc "e2e 演练项目" > /dev/null
 step "-p alpha note set A1"; $KB -p alpha note set task --title A1 --body v1 -m add1 > /dev/null
