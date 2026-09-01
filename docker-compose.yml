@@ -1,0 +1,24 @@
+# 本地开发用 PostgreSQL 16(与 102 主机同构)
+# 用法: docker compose up -d  (本机 5432 被占用时: POSTGRES_PORT=5433 docker compose up -d)
+# 默认连接串: postgres://postgres:postgres@127.0.0.1:${POSTGRES_PORT:-5432}/caskb?sslmode=disable
+services:
+  postgres:
+    image: postgres:16
+    container_name: caskb-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: caskb
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - caskb-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d caskb"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  caskb-pgdata:
