@@ -10,6 +10,20 @@ import (
 
 const defaultDSN = "postgres://postgres:postgres@127.0.0.1:5432/caskb?sslmode=disable"
 
+// projectOverride 由全局参数 -p 设置,优先于 KB_PROJECT。
+var projectOverride string
+
+// projectName 返回项目作用域(-p > KB_PROJECT > default)。
+func projectName() string {
+	if projectOverride != "" {
+		return projectOverride
+	}
+	if p := os.Getenv("KB_PROJECT"); p != "" {
+		return p
+	}
+	return "default"
+}
+
 // branchName 返回默认分支名(KB_BRANCH,默认 main)。
 func branchName() string {
 	if b := os.Getenv("KB_BRANCH"); b != "" {
@@ -33,7 +47,7 @@ func openRepo(ctx context.Context) (*repo.Repo, *store.PG, error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	cfg := repo.Config{Branch: branchName()}
+	cfg := repo.Config{Project: projectName(), Branch: branchName()}
 	applyGCProtection(&cfg)
 	r := repo.Open(s, cfg)
 	return r, s, nil

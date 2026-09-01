@@ -120,3 +120,36 @@ func TestGCBackupCreatedByDefaultAndSkippedWhenOff(t *testing.T) {
 		t.Fatalf("关闭后不应新增备份文件,got %v", files)
 	}
 }
+
+func TestProjectScopeCLI(t *testing.T) {
+	ctx := context.Background()
+	initRepo(t)
+	t.Setenv("KB_PROJECT", "alpha")
+	if err := cmdProject(ctx, []string{"create", "alpha"}); err != nil {
+		t.Fatal(err)
+	}
+	setNote(t, "a", "A")
+	out, err := captureStdout(t, func() error { return cmdNote(ctx, []string{"ls"}) })
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, "a") {
+		t.Fatalf("alpha 的 ls 应含条目 a,got %q", out)
+	}
+	t.Setenv("KB_PROJECT", "beta")
+	out, err = captureStdout(t, func() error { return cmdNote(ctx, []string{"ls"}) })
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.TrimSpace(out) != "" {
+		t.Fatalf("beta(未创建)的 ls 应为空,got %q", out)
+	}
+	t.Setenv("KB_PROJECT", "")
+	out, err = captureStdout(t, func() error { return cmdProject(ctx, []string{"ls"}) })
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, "alpha") || !strings.Contains(out, "default") {
+		t.Fatalf("project ls 应含 alpha 与 default,got %q", out)
+	}
+}
