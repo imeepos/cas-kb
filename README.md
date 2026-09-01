@@ -16,6 +16,7 @@
 
 - 每条知识按内容哈希寻址:`地址 = sha256(规范字节)`,对象一旦写入不可变
 - Merkle 树把「条目 → 目录 → 快照」层层哈希,**一个根哈希代表全库状态**
+- 目录即子树:tree 条目带类型(note|dir),目录可任意嵌套;改一条笔记只重写「它 + 祖先目录链 + 新快照」,兄弟子树地址结构共享
 - 全库唯一的可变状态 = 分支指针表(`branches: (项目, 名字) → 快照地址`)
 - 版本历史 = 快照 DAG;同步 = 比较哈希、只传缺失对象;完整性 = 地址即校验和
 
@@ -31,25 +32,55 @@
 
 ## 快速开始
 
-    go build -o kb ./cmd/kb
+    go build -o kb ./cmd/kb              # 拉取新代码后记得重建二进制
     export KB_DSN=postgres://postgres:postgres@127.0.0.1:5432/caskb?sslmode=disable
-    ./kb init
-    ./kb note set hello --title 你好 --body "第一条笔记"
-    ./kb dir add go                       # 建目录(mkdir -p 语义)
+    ./kb init                            # 建库(schema v4;旧版本库会拒绝并提示重建)
+    ./kb --help                          # 完整命令清单
+
+写入目录与条目(条目按全路径定位,父目录自动创建):
+
+    ./kb dir add go                      # 建目录(mkdir -p 语义,重复执行幂等)
     ./kb note set go/concurrency/channel --title 通道 --body "chan 语义"
-    ./kb dir tree                         # 目录层级视图
-    ./kb log
+    ./kb note set hello --title 你好 --body "第一条笔记"
+
+查看层级与内容:
+
+    ./kb dir tree                        # 层级树(note 附标题)
+    # (root)/
+    # ├── go/
+    # │   └── concurrency/
+    # │       └── channel  通道
+    # └── hello  你好
+    ./kb dir ls go                       # 直接子项(目录在前);--json 机器可读
+    ./kb note ls                         # 全库递归,路径列
+    ./kb note get go/concurrency/channel # 按全路径读(首行输出 path:)
+
+版本与变更:
+
+    ./kb log                             # 快照链,首列短标识
+    ./kb diff <短标识> main              # 按全路径输出 A/D/M;目录间移动 = 旧路径 D + 新路径 A
+    ./kb note get go/concurrency/channel --at <短标识>   # 历史版本
+    ./kb reset <短标识>                  # 指针回拨,放弃其后提交
+
+目录删除与运维:
+
+    ./kb dir rm go                       # 非空目录 → 拒绝并提示 --force
+    ./kb dir rm go --force               # 递归删除整棵子树
+    ./kb gc && ./kb fsck                 # 回收不可达对象 + 全库巡检
+
+多项目作用域:
+
     ./kb project create notes --desc "另一个知识域"
-    ./kb project ls --json                   # 机器可读项目清单(AI 选用入口)
+    ./kb project ls --json               # 机器可读项目清单(AI 选用入口)
     ./kb -p notes note set idea --title 点子 --body "另一个项目里"
-    ./kb -p notes reset <短标识>          # 放弃其后修改
-    ./kb -p notes note get idea --at <快照>  # 读取历史版本
 
 ## 开发与测试
 
     ./scripts/verify.sh                                  # 单一质量门禁:gofmt/构建/vet/单元/(可选)集成
     KB_TEST_DSN=postgres://... ./scripts/verify.sh       # 设置后追加集成测试;每个用例派生独立临时库
     ./scripts/e2e.sh                                     # 端到端验收:临时目录+临时库跑完整生命周期
+
+> 提示:仓库根目录的 `kb` 二进制不会随源码自动更新,`git pull` 后执行 `go build -o kb ./cmd/kb` 重建;`./kb --help` / `-h` 随时查看当前用法。
 
 ## 构建发布
 
