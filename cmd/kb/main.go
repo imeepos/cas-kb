@@ -50,6 +50,8 @@ func main() {
 		must(cmdReset(ctx, args[1:]))
 	case "project":
 		must(cmdProject(ctx, args[1:]))
+	case "branch":
+		must(cmdBranch(ctx, args[1:]))
 	case "help":
 		usage()
 	default:
