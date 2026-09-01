@@ -67,7 +67,7 @@ func projectCreate(ctx context.Context, s *store.PG, args []string) error {
 	if len(f.pos) < 1 {
 		return fmt.Errorf("project create: 缺少项目名")
 	}
-	desc := f.get("--desc", "")
+	desc := strings.TrimSpace(f.get("--desc", ""))
 	if err := checkDesc(desc); err != nil {
 		return err
 	}
