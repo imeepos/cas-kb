@@ -2,9 +2,8 @@
 -- cas-kb PostgreSQL 数据模型规格(schema v2)
 -- 目标库:102 主机 Docker PostgreSQL,数据库名 caskb
 -- 本文件是迁移的权威来源:实现侧的迁移逻辑必须与本文件一致
--- v1 → v2 变更:新增 projects 表;branches 增加 project 维度(复合主键)。
---   实现侧 Migrate 对 v1 存量库自动执行等价 ALTER 并回填 default 项目
---   (见 internal/store/migrate.go);对象表与对象编码不变,地址稳定。
+-- v2 形态:projects 表 + branches 项目维度(复合主键)。
+-- 不做存量库自动迁移:版本不符时实现侧拒绝打开;老数据可弃则清库重建。
 -- =====================================================================
 
 -- 对象表:内容寻址存储(CAS),只增不删(仅 GC 清扫不可达行)
