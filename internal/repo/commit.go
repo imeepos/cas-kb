@@ -77,7 +77,11 @@ func (r *Repo) Resolve(ctx context.Context, name string) (hash.Address, error) {
 	return r.resolveByPrefix(ctx, name)
 }
 
+// errStopScan 是扫描的内部提前终止信号:命中第二个快照即可判定歧义。
+var errStopScan = errors.New("repo: 终止前缀扫描")
+
 // resolveByPrefix 在全部快照对象中按地址前缀唯一匹配。
+// 命中第二个快照即提前终止扫描并报歧义,避免无谓的全表遍历。
 func (r *Repo) resolveByPrefix(ctx context.Context, prefix string) (hash.Address, error) {
 	var match hash.Address
 	n := 0
@@ -85,9 +89,15 @@ func (r *Repo) resolveByPrefix(ctx context.Context, prefix string) (hash.Address
 		if info.Kind == object.KindSnapshot && strings.HasPrefix(string(info.Addr), prefix) {
 			match = info.Addr
 			n++
+			if n > 1 {
+				return errStopScan
+			}
 		}
 		return nil
 	})
+	if errors.Is(err, errStopScan) {
+		return "", ErrAmbiguousRef
+	}
 	if err != nil {
 		return "", err
 	}
