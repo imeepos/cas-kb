@@ -35,8 +35,8 @@
 
 ## 开发与测试
 
-    go build ./... && go vet ./... && go test ./...     # 单元测试,无需数据库
-    KB_TEST_DSN=postgres://... go test ./...            # 集成测试;每个用例派生独立临时库,未设置则跳过
+    ./scripts/verify.sh                                  # 单一质量门禁:gofmt/构建/vet/单元/(可选)集成
+    KB_TEST_DSN=postgres://... ./scripts/verify.sh       # 设置后追加集成测试;每个用例派生独立临时库
 
 ## 环境假设
 

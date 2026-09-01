@@ -37,9 +37,9 @@ func (r *Repo) SetNote(ctx context.Context, slug string, in NoteInput, msg strin
 		return "", "", err
 	}
 	n := &object.Note{
-		Kind: object.KindNote,
-		Meta: object.Meta{Title: in.Title, Tags: in.Tags, CreatedAt: ts(in.Time, r.now), SchemaVersion: object.SchemaVersion},
-		Body: bodyAddr,
+		Kind:  object.KindNote,
+		Meta:  object.Meta{Title: in.Title, Tags: in.Tags, CreatedAt: ts(in.Time, r.now), SchemaVersion: object.SchemaVersion},
+		Body:  bodyAddr,
 		Links: in.Links,
 	}
 	noteData, err := object.EncodeNote(n)

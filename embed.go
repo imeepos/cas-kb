@@ -4,5 +4,6 @@ package caskb
 import _ "embed"
 
 // SchemaSQL 是数据库 DDL 权威来源(schema.sql)的字节内容。
+//
 //go:embed schema.sql
 var SchemaSQL string
