@@ -1,12 +1,12 @@
 # AGENTS.md
 
-本工作区是 **cas-kb 知识库系统**:交付设计文档与 Go 实现(CLI `kb`)。ROADMAP 的 M1–M3.6 已交付(含 M3.5 项目隔离、M3.6 回退与历史读取);M4(检索/HTTP API)为可选项,未开工。
+本工作区是 **cas-kb 知识库系统**:交付设计文档与 Go 实现(CLI `kb`)。ROADMAP 的 M1–M3.7 已交付(含 M3.5 项目隔离、M3.6 回退与历史读取、M3.7 AI 选用元数据/schema v3);M4(检索/HTTP API)为可选项,未开工。
 
 ## 既定事实
 
 - 存储引擎:Docker 化 PostgreSQL 16,部署在主机 `102`(内网),库名 `caskb`
 - 开发语言:Go(≥1.22),驱动 pgx/v5,CLI 名为 `kb`
-- 核心架构:内容寻址 + Merkle 树;唯一可变状态是 branches 表
+- 核心架构:内容寻址 + Merkle 树;可变状态收敛于 projects/branches 两张命名空间表(指针+描述),对象不可变
 - 文档是权威来源:DESIGN.md(设计)、schema.sql(数据模型规格)、ROADMAP.md(里程碑与验收)
 
 ## 约定
