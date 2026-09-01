@@ -104,6 +104,23 @@ func (r *Repo) ListNotes(ctx context.Context) ([]*NoteRef, error) {
 	return out, nil
 }
 
+// NoteAt 读取指定快照(分支名/地址/短标识)中的条目详情。
+func (r *Repo) NoteAt(ctx context.Context, slug, ref string) (*NoteRef, error) {
+	addr, err := r.Resolve(ctx, ref)
+	if err != nil {
+		return nil, err
+	}
+	t, err := r.treeAtSnapshot(ctx, addr)
+	if err != nil {
+		return nil, err
+	}
+	nAddr, ok := t.Get(slug)
+	if !ok {
+		return nil, store.ErrNotFound
+	}
+	return r.noteAt(ctx, slug, nAddr)
+}
+
 // currentTree 读取当前分支头的 root tree;无头时返回空树。
 func (r *Repo) currentTree(ctx context.Context) (*object.Tree, bool, error) {
 	head, has, err := r.head(ctx)

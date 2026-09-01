@@ -9,10 +9,19 @@ import (
 )
 
 func noteGet(ctx context.Context, r *repo.Repo, args []string) error {
-	if len(args) < 1 {
+	f, err := parseFlags(args, map[string]bool{"--at": true})
+	if err != nil {
+		return err
+	}
+	if len(f.pos) < 1 {
 		return fmt.Errorf("note get: 缺少 slug")
 	}
-	ref, err := r.Note(ctx, args[0])
+	var ref *repo.NoteRef
+	if at := f.get("--at", ""); at != "" {
+		ref, err = r.NoteAt(ctx, f.pos[0], at)
+	} else {
+		ref, err = r.Note(ctx, f.pos[0])
+	}
 	if err != nil {
 		return err
 	}
