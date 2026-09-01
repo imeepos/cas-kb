@@ -33,6 +33,8 @@ func openRepo(ctx context.Context) (*repo.Repo, *store.PG, error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	r := repo.Open(s, repo.Config{Branch: branchName()})
+	cfg := repo.Config{Branch: branchName()}
+	applyGCProtection(&cfg)
+	r := repo.Open(s, cfg)
 	return r, s, nil
 }

@@ -18,5 +18,6 @@ func usage() {
 		"环境变量:\n" +
 		"  KB_DSN       本地连接串(默认 postgres://postgres:postgres@127.0.0.1:5432/caskb)\n" +
 		"  KB_BRANCH    默认分支名(默认 main)\n" +
-		"  KB_REMOTE_DSN pull 的远端连接串(或作为参数传入)\n")
+		"  KB_REMOTE_DSN pull 的远端连接串(或作为参数传入)\n" +
+		"  KB_GC_PROTECT GC 前自动备份分支表(on/off,默认 on)\n")
 }

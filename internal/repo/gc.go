@@ -2,6 +2,7 @@ package repo
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/imeepos/cas-kb/internal/hash"
@@ -16,10 +17,17 @@ type GCResult struct {
 }
 
 // GC 执行标记-清扫:从全部分支头出发标记可达对象,删除其余未标记对象。
+// 开启 GCProtect 时,清扫前先把分支表交给 GCExportBranches 备份;
+// 备份失败则中止 GC(不清扫任何对象)。
 func (r *Repo) GC(ctx context.Context) (GCResult, error) {
 	branches, err := r.st.BranchList(ctx)
 	if err != nil {
 		return GCResult{}, err
+	}
+	if r.gcProtect {
+		if err := r.exportBranches(ctx, branches); err != nil {
+			return GCResult{}, err
+		}
 	}
 	marked := map[string]bool{}
 	for _, b := range branches {
@@ -42,6 +50,17 @@ func (r *Repo) GC(ctx context.Context) (GCResult, error) {
 		return GCResult{}, err
 	}
 	return res, nil
+}
+
+// exportBranches 在清扫前导出分支表;未配置导出函数时报错拒绝。
+func (r *Repo) exportBranches(ctx context.Context, branches []store.BranchRef) error {
+	if r.gcExport == nil {
+		return errors.New("repo: GC 保护已开启但未配置分支表导出")
+	}
+	if err := r.gcExport(ctx, branches); err != nil {
+		return fmt.Errorf("repo: GC 前备份分支表失败: %w", err)
+	}
+	return nil
 }
 
 // markReachable 从 addr 出发沿引用标记全部可达对象。
