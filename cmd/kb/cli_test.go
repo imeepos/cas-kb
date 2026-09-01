@@ -34,9 +34,15 @@ func captureStdout(t *testing.T, fn func() error) (string, error) {
 }
 
 // initRepo 准备一个已迁移的全新测试库并设置 KB_DSN。
+// 默认 SQLite(t.TempDir 内,零外部依赖,本地 go test 即跑);
+// 设置 KB_TEST_DSN 时派生 PG 库走回归(对齐 M3.10 repo 测试模式)。
 func initRepo(t *testing.T) {
 	t.Helper()
-	t.Setenv("KB_DSN", testdb.New(t))
+	dsn := testdb.NewSQLite(t)
+	if os.Getenv("KB_TEST_DSN") != "" {
+		dsn = testdb.New(t)
+	}
+	t.Setenv("KB_DSN", dsn)
 	if err := cmdInit(context.Background(), nil); err != nil {
 		t.Fatal(err)
 	}
