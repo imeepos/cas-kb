@@ -7,12 +7,25 @@ import (
 	"os"
 )
 
-func main() {
-	args := os.Args[1:]
-	if len(args) >= 2 && args[0] == "-p" {
-		projectOverride = args[1]
-		args = args[2:]
+// extractProjectArg 抽取任意位置的 "-p 项目" 参数,返回剩余参数与项目名。
+// 注意:-p 为全局保留参数,不能作为命令位置参数或旗标值使用。
+func extractProjectArg(args []string) ([]string, string) {
+	out := make([]string, 0, len(args))
+	proj := ""
+	for i := 0; i < len(args); i++ {
+		if args[i] == "-p" && i+1 < len(args) {
+			proj = args[i+1]
+			i++
+			continue
+		}
+		out = append(out, args[i])
 	}
+	return out, proj
+}
+
+func main() {
+	args, proj := extractProjectArg(os.Args[1:])
+	projectOverride = proj
 	if len(args) < 1 {
 		usage()
 		os.Exit(2)

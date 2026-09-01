@@ -38,7 +38,7 @@ type Store interface {
 	Delete(ctx context.Context, addr hash.Address) error
 	List(ctx context.Context, fn func(ObjectInfo) error) error
 	ProjectCreate(ctx context.Context, name string) error
-	ProjectList(ctx context.Context) ([]string, error)
+	ProjectStats(ctx context.Context) ([]ProjectStat, error)
 	BranchGet(ctx context.Context, project, name string) (hash.Address, error)
 	BranchSet(ctx context.Context, project, name string, addr hash.Address) error
 	BranchDelete(ctx context.Context, project, name string) error

@@ -141,15 +141,34 @@ func TestProjectScopeCLI(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.TrimSpace(out) != "" {
-		t.Fatalf("beta(未创建)的 ls 应为空,got %q", out)
+	if !strings.Contains(out, "(no notes)") {
+		t.Fatalf("beta(未创建)的 ls 应提示无条目,got %q", out)
 	}
 	t.Setenv("KB_PROJECT", "")
+	// 尾部 -p:extractProjectArg 应支持任意位置抽取
+	rest, proj := extractProjectArg([]string{"note", "ls", "-p", "alpha"})
+	if proj != "alpha" || len(rest) != 2 || rest[0] != "note" || rest[1] != "ls" {
+		t.Fatalf("尾部 -p 抽取错误: rest=%v proj=%q", rest, proj)
+	}
+	rest, proj = extractProjectArg([]string{"-p", "beta", "log"})
+	if proj != "beta" || len(rest) != 1 || rest[0] != "log" {
+		t.Fatalf("前缀 -p 抽取错误: rest=%v proj=%q", rest, proj)
+	}
+	t.Setenv("KB_PROJECT", "")
+	projectOverride = "alpha"
+	defer func() { projectOverride = "" }()
+	out, err = captureStdout(t, func() error { return cmdNote(ctx, []string{"ls"}) })
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, "a") {
+		t.Fatalf("alpha 作用域 ls 应含 a,got %q", out)
+	}
 	out, err = captureStdout(t, func() error { return cmdProject(ctx, []string{"ls"}) })
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(out, "alpha") || !strings.Contains(out, "default") {
-		t.Fatalf("project ls 应含 alpha 与 default,got %q", out)
+	if !strings.Contains(out, "alpha\t1") || !strings.Contains(out, "default\t0") {
+		t.Fatalf("project ls 应含项目与分支数统计,got %q", out)
 	}
 }
