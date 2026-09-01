@@ -52,6 +52,10 @@ func noteRm(ctx context.Context, r *repo.Repo, args []string) error {
 }
 
 func noteLs(ctx context.Context, r *repo.Repo, args []string) error {
+	f, err := parseFlags(args, nil)
+	if err != nil {
+		return err
+	}
 	refs, err := r.ListNotes(ctx)
 	if err != nil {
 		return err
@@ -59,6 +63,24 @@ func noteLs(ctx context.Context, r *repo.Repo, args []string) error {
 	if len(refs) == 0 {
 		fmt.Println("(no notes)")
 		return nil
+	}
+	if f.has("--json") {
+		type row struct {
+			Slug      string   `json:"slug"`
+			Title     string   `json:"title"`
+			Tags      []string `json:"tags"`
+			CreatedAt int64    `json:"created_at"`
+			Summary   string   `json:"summary"`
+		}
+		rows := make([]row, 0, len(refs))
+		for _, ref := range refs {
+			tags := ref.Note.Meta.Tags
+			if tags == nil {
+				tags = []string{}
+			}
+			rows = append(rows, row{Slug: ref.Slug, Title: ref.Note.Meta.Title, Tags: tags, CreatedAt: ref.Note.Meta.CreatedAt, Summary: firstSummary(ref.Body)})
+		}
+		return printJSON(rows)
 	}
 	for _, ref := range refs {
 		fmt.Printf("%s\t%s\n", ref.Slug, ref.Note.Meta.Title)
