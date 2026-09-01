@@ -39,8 +39,10 @@ jobs:
         env:
           KB_TEST_DSN: postgres://postgres:postgres@127.0.0.1:5432/caskb?sslmode=disable
         run: ./scripts/verify.sh
-      - name: 端到端验收(临时目录+临时库,产物不入库)
-        run: ./scripts/e2e.sh
+      - name: 端到端验收(SQLite 默认 + PostgreSQL 双模式,临时库不入库)
+        run: |
+          ./scripts/e2e.sh
+          ./scripts/e2e.sh postgres://postgres:postgres@127.0.0.1:5432/caskb?sslmode=disable
 
   # 2) 多平台交叉编译:CGO 关闭保证纯静态;产物 kb-<版本>-<os>-<arch> 归档上传。
   build:

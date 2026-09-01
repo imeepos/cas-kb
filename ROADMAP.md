@@ -2,7 +2,7 @@
 
 每个里程碑交付可独立验收的能力;验收标准即测试用例的来源。
 
-> 状态:M1–M3.9 已交付并通过验收(M3.9=库级运维命令 backup/restore/wipe);M4 为可选项,未开工。
+> 状态:M1–M3.10 已交付并通过验收(M3.10=存储后端可插拔:SQLite 默认、PostgreSQL 可选);M4 为可选项,未开工。
 
 ## M1 存储内核
 
@@ -103,6 +103,19 @@
 - e2e 覆盖原生命令断言;文档同步:DESIGN §5.1/§8.3、本节
 
 **状态**:已交付(三条命令 + store.Wipe 契约 + 单元/集成/CLI/e2e 测试全绿)。
+
+## M3.10 存储后端可插拔(SQLite 默认,PostgreSQL 可选)
+
+**范围**:store.SQLite 实现(全 Store 契约含 Wipe)+ schema_sqlite.sql 语义镜像(schema v4 与 schema.sql 同步演进)、store.Open 按 DSN 分派(`postgres://` → PG,其余按 SQLite 路径,默认 `~/.local/share/caskb/caskb.db`)、CLI 全量面向 store.Store 接口、`kb init` 显示后端、repo/store 集成测试默认 SQLite 零外部依赖(KB_TEST_DSN 时回归 PostgreSQL)、e2e 双模式(SQLite 默认 / postgres 可选,含 pg_dump 备份路径)。
+
+**验收标准**
+- 全新环境零外部依赖:kb init/note/dir/log/diff/reset/project/branch/gc/fsck/backup/restore/wipe 全流程可用(默认 SQLite 文件;`kb init` 显示后端 sqlite)
+- `KB_DSN=postgres://…` 时行为与 M3.9 交付一致;两后端跑同一套 go test 用例与同一份 e2e 脚本全绿
+- schema_sqlite.sql 与 schema.sql 语义一致:整库版本门禁同样拒绝旧版本并指引重建;外键兜底(分支→对象、分支→项目)同样响亮报错
+- .ckb 备份跨后端可移植:SQLite 导出 → PG 恢复(及反向)roundtrip 计数与内容一致,fsck 通过
+- 文档同步:schema_sqlite.sql、DESIGN §4/§5/§8、AGENTS、README、本节
+
+**状态**:已交付(SQLite 后端与 DSN 分派、双后端测试/门禁/e2e 全绿,跨后端 .ckb 可移植)。
 
 ## M4 检索与集成(可选)
 

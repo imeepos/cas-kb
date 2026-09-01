@@ -4,12 +4,12 @@
 > 写完的东西要立刻存档（commit）
 > 禁止直接在主分支上修改任何代码
 
-本工作区是 **cas-kb 知识库系统**:交付设计文档与 Go 实现(CLI `kb`)。ROADMAP 的 M1–M3.9 已交付(含 M3.5 项目隔离、M3.6 回退与历史读取、M3.7 AI 选用元数据/schema v3、M3.8 目录层级/schema v4:tree 条目带类型,目录可嵌套,条目按全路径定位、M3.9 库级运维命令 backup/restore/wipe);M4(检索/HTTP API)为可选项,未开工。
+本工作区是 **cas-kb 知识库系统**:交付设计文档与 Go 实现(CLI `kb`)。ROADMAP 的 M1–M3.10 已交付(含 M3.5 项目隔离、M3.6 回退与历史读取、M3.7 AI 选用元数据/schema v3、M3.8 目录层级/schema v4:tree 条目带类型,目录可嵌套,条目按全路径定位、M3.9 库级运维命令 backup/restore/wipe、M3.10 存储后端可插拔:SQLite 默认/PostgreSQL 可选);M4(检索/HTTP API)为可选项,未开工。
 
 ## 既定事实
 
-- 存储引擎:Docker 化 PostgreSQL 16,部署在主机 `102`(内网),库名 `caskb`
-- 开发语言:Go(≥1.22),驱动 pgx/v5,CLI 名为 `kb`
+- 存储引擎:默认 SQLite 本地文件(modernc.org/sqlite 纯 Go,默认 `~/.local/share/caskb/caskb.db`,KB_DSN 可改路径);可选 Docker 化 PostgreSQL 16(主机 `102` 内网,库名 `caskb`,`KB_DSN=postgres://…` 切换)
+- 开发语言:Go(≥1.22),驱动 pgx/v5(PostgreSQL)与 modernc.org/sqlite(SQLite),CLI 名为 `kb`
 - 核心架构:内容寻址 + Merkle 树;可变状态收敛于 projects/branches 两张命名空间表(指针+描述),对象不可变
 - 文档是权威来源:DESIGN.md(设计)、schema.sql(数据模型规格)、ROADMAP.md(里程碑与验收)
 

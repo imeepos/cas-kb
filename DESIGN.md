@@ -67,11 +67,11 @@
 
 **目录层级(M3.8)**:tree 条目带类型(note\|dir),dir 条目指向子 tree,目录可任意嵌套。条目全路径 = 目录段 + slug(如 `go/concurrency/channel`),`/` 是路径分隔符;单段路径即根目录条目,与 M2 扁平用法完全兼容。空目录是合法实体(空 entries 树,沿父链可达,GC 不回收);同目录内 slug 唯一 ⇒ 条目与目录天然不同名。链接 slug 的解析:先按全路径精确匹配;未命中再按叶子名全库唯一匹配,命中多个即报歧义并列出候选——规则确定且随快照自洽。
 
-## 4. 存储设计(PostgreSQL)
+## 4. 存储设计(SQLite 默认,PostgreSQL 可选)
 
 ### 4.1 表结构
 
-四张表(完整 DDL 见 [schema.sql](schema.sql)):
+四张表(完整 DDL 见 [schema.sql](schema.sql);SQLite 后端使用其语义镜像 [schema_sqlite.sql](schema_sqlite.sql),表/列/约束/默认播种/版本一一对应):
 
 - **objects** — `addr(text PK), kind, size, data(bytea)`;只增不删(仅 GC 清扫);全局共享、跨项目去重
 - **projects** — `name(text PK), created_at, description`;项目隔离的一等实体(schema v2 新增,v3 加描述列)
@@ -124,18 +124,28 @@
 - **空目录合法**:空 entries 树沿父链可达,GC 不回收;删除目录下的最后一条目不连带删目录
 - **引用一致性**:fsck 校验 tree 条目类型与目标对象 kind 一致(type=note → note 对象,type=dir → tree 对象)
 
-## 5. Go 工程结构(M1–M3.8 按此结构实现)
+### 4.8 存储后端与分派(M3.10)
+
+- **默认 SQLite**:零外部依赖开箱即用;`modernc.org/sqlite` 纯 Go 驱动(无 CGO,交叉编译产物保持静态)。库文件默认 `~/.local/share/caskb/caskb.db`(`XDG_DATA_HOME` 优先),`KB_DSN` 指定其余路径,`sqlite:` 前缀可省略
+- **PostgreSQL 可选**:`KB_DSN=postgres://…` 时切回 pgx/v5 后端;服务端/大库场景延续 §4.2 的运维积累(102 主机)
+- **分派口径**:store.Open 按前缀分派——`postgres://`/`postgresql://` → PG,其余一律视为 SQLite 路径;CLI 全部面向 store.Store 接口,repo 层对后端零感知;`kb init` 显示实际后端与目标(展示不含凭据)
+- **并发形态**:WAL + busy_timeout(10s)+ foreign_keys ON,经 DSN pragma 逐连接生效;GC/FSCK 的「List 游标遍历中嵌套 Get/Delete」依赖读写并发,WAL 下成立(实测探针选定 pragma 编码形态:参数名字面、值中 `=` 编码为 `%3d`)
+- **方言差异**:bytea→BLOB、timestamptz→TEXT(strftime UTC)、addr 正则 CHECK→等价 GLOB+长度 CHECK;SQLite 读回空 blob 可能呈现 nil,Put 侧归一为空 blob(满足 NOT NULL,与 PG 字节语义一致)
+- **同一版本门禁**:meta.schema_version 与 PG 共用 4;旧库拒绝打开、`meta` 表在但无版本行等价全新库的口径一致
+
+## 5. Go 工程结构(M1–M3.10 按此结构实现)
 
 ```
 cas-kb/
-├── cmd/kb/          CLI 入口:init / note / dir / log / diff / pull / gc / fsck / reset / project / branch / backup / restore / wipe / update / version
+├── cmd/kb/            CLI 入口:init / note / dir / log / diff / pull / gc / fsck / reset / project / branch / backup / restore / wipe / update / version
 ├── internal/
-│   ├── hash/        地址类型、sha256 封装、格式校验
-│   ├── object/      四类对象定义、规范编解码、结构校验
-│   ├── store/       存储接口 + postgres 实现 + 迁移
-│   ├── repo/        业务层:提交、解析、日志、diff、pull、gc、fsck
-│   └── selfupdate/  在线自更新:Release 查询、版本比较、产物校验与二进制替换
-└── schema.sql       DDL 规格(迁移的权威来源)
+│   ├── hash/          地址类型、sha256 封装、格式校验
+│   ├── object/        四类对象定义、规范编解码、结构校验
+│   ├── store/         存储接口 + postgres/sqlite 实现 + DSN 分派与迁移
+│   ├── repo/          业务层:提交、解析、日志、diff、pull、gc、fsck
+│   └── selfupdate/    在线自更新:Release 查询、版本比较、产物校验与二进制替换
+├── schema.sql         PostgreSQL DDL 规格(权威来源)
+└── schema_sqlite.sql  SQLite DDL 镜像(与 schema.sql 同步演进)
 ```
 
 依赖方向:`cmd → repo → store/object → hash`;store 不依赖 repo;cmd 亦依赖 `selfupdate`(自更新,独立于存储链)。
@@ -223,14 +233,15 @@ cas-kb/
 
 ### 8.1 拓扑
 
-- 生产:PostgreSQL 16 Docker 部署于主机 `102`,库名 `caskb`;Go CLI/服务端同内网访问
-- 开发:本机 `docker compose` 起同构实例(compose 片段见 README 附录)
+- 个人/开发:**默认 SQLite 本地文件**(`~/.local/share/caskb/caskb.db`),零部署零依赖
+- 生产:PostgreSQL 16 Docker 部署于主机 `102`,库名 `caskb`;Go CLI/服务端同内网访问(`KB_DSN=postgres://…` 接入)
+- 开发(PG 回归):本机 `docker compose` 起同构实例(compose 片段见 README 附录)
 
 ### 8.2 配置项
 
 | 变量 | 默认 | 说明 |
 |---|---|---|
-| KB_DSN | `postgres://postgres:postgres@127.0.0.1:5432/caskb?sslmode=disable` | 连接串;指向 102 时替换主机部分 |
+| KB_DSN | `sqlite:~/.local/share/caskb/caskb.db` | 库连接串:SQLite 文件路径(`sqlite:` 前缀可省略;`:memory:` 为内存库)或 `postgres://…`(切换 PostgreSQL 后端) |
 | KB_BRANCH | `main` | 默认分支 |
 | KB_GC_PROTECT | `on` | GC 清扫前自动导出分支表备份;设为 off/0/false 关闭 |
 | KB_REMOTE_DSN | (无) | `kb pull` 的远端连接串(也可作为命令行参数传入) |
@@ -239,12 +250,13 @@ cas-kb/
 | KB_UPDATE_REPO | `imeepos/cas-kb` | `kb update` 检查的 GitHub 仓库(owner/name),也可 --repo 按次覆盖 |
 | GITHUB_TOKEN | (无) | 可选;GitHub API 令牌,缓解匿名限流(仅 update 使用,只作请求头) |
 
-指向 102 的示例:`postgres://caskb_app:<密码>@192.168.x.102:5432/caskb?sslmode=disable`。
+指向 102 的示例(PG 后端):`postgres://caskb_app:<密码>@192.168.x.102:5432/caskb?sslmode=disable`。
 安全要求:专用账号 `caskb_app`(只授 caskb 库权限)、密码走 scram-sha-256、内网传输是否启用 TLS 按内网策略定;**凭据一律走环境变量,不入库不入仓**。
 
 ### 8.3 备份与恢复(正规化)
 
-- **两条备份路径**:① `kb backup [文件]` 原生导出(.ckb,JSONL;跨后端可移植、无 psql 依赖、恢复时逐对象校验哈希);② `./scripts/backup.sh [DSN]` pg_dump 全保真 DB 备份(产物写 `backups/`,git 忽略,文件名含库版本与时间戳并附 sha256)。两者都是全库语义
+- **两条备份路径**:① `kb backup [文件]` 原生导出(.ckb,JSONL;跨后端可移植、无 psql 依赖、恢复时逐对象校验哈希);② `./scripts/backup.sh [DSN]` pg_dump 全保真 DB 备份(仅 PostgreSQL 后端;产物写 `backups/`,git 忽略,文件名含库版本与时间戳并附 sha256)。两者都是全库语义
+- **跨后端迁移**:.ckb 与后端无关——旧后端 `kb backup` 导出、新后端 `kb restore` 导入,即完成 SQLite↔PostgreSQL 双向迁移;e2e 双模式覆盖两种后端的完整生命周期
 - **恢复**:`kb restore <文件> [--force]`(非空库需 --force,先 Wipe)或 `./scripts/restore.sh <backup.sql> <目标库>`(导入全新库;旧 schema 备份会提示配套二进制)
 - **备份统一出口(脚本)** `./scripts/backup.sh`:pg_dump 逻辑备份(含 objects/projects/branches/meta),文件名 `caskb-v<库版本>-backup-<时间戳>.sql`——版本号进文件名,恢复时可识别配套的 kb 二进制
 - **恢复统一入口** `./scripts/restore.sh <backup.sql> <目标库>`:导入**全新库**(先删后建);备份属于旧 schema 时打印提醒(v4 门禁会拒绝旧库,需用对应版本的 kb 二进制访问)
