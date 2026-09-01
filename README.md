@@ -43,6 +43,7 @@
 
     ./scripts/verify.sh                                  # 单一质量门禁:gofmt/构建/vet/单元/(可选)集成
     KB_TEST_DSN=postgres://... ./scripts/verify.sh       # 设置后追加集成测试;每个用例派生独立临时库
+    ./scripts/e2e.sh                                     # 端到端验收:临时目录+临时库跑完整生命周期
 
 ## 环境假设
 
