@@ -84,11 +84,17 @@ func TestDecodeRejectsBadSchema(t *testing.T) {
 }
 
 func TestTreeAndSnapshotRoundtrip(t *testing.T) {
-	tr := &Tree{Kind: KindTree, Entries: []TreeEntry{{Slug: "a", Addr: Sum([]byte("a"))}, {Slug: "b", Addr: Sum([]byte("b"))}}}
+	tr := &Tree{Kind: KindTree, Entries: []TreeEntry{
+		{Slug: "a", Type: EntryNote, Addr: Sum([]byte("a"))},
+		{Slug: "b", Type: EntryNote, Addr: Sum([]byte("b"))},
+	}}
 	bt, _ := EncodeTree(tr)
 	tr2, err := DecodeTree(bt)
 	if err != nil || len(tr2.Entries) != 2 {
 		t.Fatalf("tree roundtrip 失败: %v", err)
+	}
+	if tr2.Entries[0].Type != EntryNote {
+		t.Fatalf("条目类型应保留: %v", tr2.Entries[0].Type)
 	}
 	sp := &Snapshot{Kind: KindSnapshot, Root: Sum([]byte("root")), Parents: []Address{Sum([]byte("p1"))}, Time: 1, Message: "m"}
 	bs, _ := EncodeSnapshot(sp)
@@ -104,8 +110,45 @@ func TestValidateErrors(t *testing.T) {
 	if err := ValidateNote(n); err == nil {
 		t.Fatal("缺标题应报错")
 	}
-	tr := &Tree{Kind: KindTree, Entries: []TreeEntry{{Slug: "a", Addr: Sum([]byte("x"))}, {Slug: "a", Addr: Sum([]byte("y"))}}}
+	tr := &Tree{Kind: KindTree, Entries: []TreeEntry{
+		{Slug: "a", Type: EntryNote, Addr: Sum([]byte("x"))},
+		{Slug: "a", Type: EntryNote, Addr: Sum([]byte("y"))},
+	}}
 	if err := ValidateTree(tr); err == nil {
 		t.Fatal("重复 slug 应报错")
+	}
+	badType := &Tree{Kind: KindTree, Entries: []TreeEntry{{Slug: "a", Type: "folder", Addr: Sum([]byte("x"))}}}
+	if err := ValidateTree(badType); err == nil {
+		t.Fatal("非法条目类型应报错")
+	}
+}
+
+func TestM38_TreeTypedEntries(t *testing.T) {
+	// 目录条目:addr 指向子 tree;编码含 type 字段,roundtrip 保留
+	tr := NewTree()
+	tr.Set("sub", EntryDir, Sum([]byte("subtree")))
+	tr.Set("a", EntryNote, Sum([]byte("note-a")))
+	b, err := EncodeTree(tr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Contains(b, []byte("\"type\":\"dir\"")) {
+		t.Fatalf("编码应含显式 type 字段: %s", b)
+	}
+	dec, err := DecodeTree(b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	e, ok := dec.Lookup("sub")
+	if !ok || e.Type != EntryDir || e.Addr != Sum([]byte("subtree")) {
+		t.Fatalf("dir 条目 roundtrip 不一致: %+v %v", e, ok)
+	}
+}
+
+func TestM38_DecodeRejectsLegacyUntypedTree(t *testing.T) {
+	// v3 旧格式条目无 type 字段:v4 解码必须响亮拒绝
+	legacy := []byte(`{"kind":"tree","entries":[{"slug":"a","addr":"` + string(Sum([]byte("a"))) + `"}]}`)
+	if _, err := DecodeTree(legacy); err == nil {
+		t.Fatal("v3 旧格式(无 type)tree 应被拒绝")
 	}
 }

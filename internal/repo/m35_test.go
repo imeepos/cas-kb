@@ -24,14 +24,14 @@ func TestM35_ProjectsIsolated(t *testing.T) {
 	if _, _, err := rb.SetNote(ctx, "b", NoteInput{Title: "B"}, "add b"); err != nil {
 		t.Fatal(err)
 	}
-	na, err := ra.ListNotes(ctx)
+	na, err := ra.ListNotes(ctx, "")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(na) != 1 || na[0].Slug != "a" {
 		t.Fatalf("alpha 应只看到 a,got %v", na)
 	}
-	nb, err := rb.ListNotes(ctx)
+	nb, err := rb.ListNotes(ctx, "")
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -12,7 +12,7 @@ import (
 // 注意:与 object.SchemaVersion(对象编码格式版本)相互独立。
 // 本实现不做存量库自动迁移:版本不符时在执行任何 DDL 之前拒绝打开,
 // 老数据可弃则清库重建。
-const DBSchemaVersion = 3
+const DBSchemaVersion = 4
 
 // Migrate 校验已有库版本(不符即在 DDL 前响亮拒绝),再对全新库执行 schema.sql。
 func Migrate(ctx context.Context, pool *pgxpool.Pool) error {

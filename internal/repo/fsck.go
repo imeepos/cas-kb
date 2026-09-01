@@ -55,6 +55,10 @@ func (r *Repo) checkOne(ctx context.Context, info store.ObjectInfo, res *FSCKRes
 	if kind == object.KindBlob {
 		return nil
 	}
+	if kind == object.KindTree {
+		r.checkTreeEntries(ctx, info, data, res)
+		return nil
+	}
 	kids, err := childrenOf(kind, data)
 	if err != nil {
 		res.add(info, fmt.Sprintf("解码失败: %v", err))
@@ -70,6 +74,30 @@ func (r *Repo) checkOne(ctx context.Context, info store.ObjectInfo, res *FSCKRes
 		}
 	}
 	return nil
+}
+
+// checkTreeEntries 校验 tree 条目:目标对象存在,且 kind 与条目类型一致
+// (type=note 应指向 note 对象;type=dir 应指向子 tree 对象)。
+func (r *Repo) checkTreeEntries(ctx context.Context, info store.ObjectInfo, data []byte, res *FSCKResult) {
+	t, err := object.DecodeTree(data)
+	if err != nil {
+		res.add(info, fmt.Sprintf("解码失败: %v", err))
+		return
+	}
+	for _, e := range t.Entries {
+		_, ckind, err := r.st.Get(ctx, e.Addr)
+		if err != nil {
+			res.add(info, fmt.Sprintf("条目 %q 引用对象缺失: %s", e.Slug, e.Addr))
+			continue
+		}
+		want := object.KindNote
+		if e.Type == object.EntryDir {
+			want = object.KindTree
+		}
+		if ckind != want {
+			res.add(info, fmt.Sprintf("条目 %q 类型为 %s,但目标对象 %s 是 %s", e.Slug, e.Type, e.Addr, ckind))
+		}
+	}
 }
 
 func (r *FSCKResult) add(info store.ObjectInfo, problem string) {

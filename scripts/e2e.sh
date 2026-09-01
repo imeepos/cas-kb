@@ -37,6 +37,20 @@ step "project ls --json";    jout=$($KB project ls --json); has '"description": 
 step "branch desc 设置";     $KB -p alpha branch desc main 工作线 > /dev/null
 step "branch ls --json";     bout=$($KB -p alpha branch ls --json); has '"description": "工作线"' "$bout"
 step "note ls --json 摘要";  has '"summary": "v1"' "$($KB -p alpha note ls --json)"
+# ---- M3.8 目录层级(schema v4)----
+step "dir add go";           $KB -p alpha dir add go > /dev/null
+D0=$($KB -p alpha log | head -1 | awk '{print $1}')
+step "嵌套 note set";        $KB -p alpha note set go/concurrency/channel --title Chan --body cs -m add-chan > /dev/null
+step "note get 全路径";      has "path:  go/concurrency/channel" "$($KB -p alpha note get go/concurrency/channel)"
+step "dir ls 子目录";        has "dir  concurrency" "$($KB -p alpha dir ls go)"
+step "note ls --dir 递归";    has "channel" "$($KB -p alpha note ls --dir go/concurrency)"
+step "dir tree 层级";        out=$($KB -p alpha dir tree); has "go/" "$out"; has "channel  Chan" "$out"
+step "diff 全路径";          has "A  go/concurrency/channel" "$($KB -p alpha diff "$D0" main)"
+if $KB -p alpha dir rm go >/dev/null 2>&1; then echo "断言失败: 非空目录应拒绝删除"; exit 1; fi
+step "dir rm --force";       $KB -p alpha dir rm go --force > /dev/null
+if echo "$($KB -p alpha note ls)" | grep -qF "channel"; then echo "断言失败: force 删除后不应再有条目"; exit 1; fi
+step "根目录仍存 A1";        has "A1" "$($KB -p alpha note ls)"
+step "dir add 幂等";         $KB -p alpha dir add go > /dev/null
 step "gc + fsck";            out=$($KB gc); has "已备份" "$out"; has "完整,无问题" "$($KB fsck)"
 psql "$ADMIN_DSN" -qAc "DROP DATABASE IF EXISTS $E2E_DB" > /dev/null
 echo "E2E_GREEN"

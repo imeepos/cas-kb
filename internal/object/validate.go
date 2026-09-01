@@ -27,7 +27,7 @@ func ValidateNote(n *Note) error {
 	return ensureSchema(n.Meta.SchemaVersion)
 }
 
-// ValidateTree 校验 tree 结构:entries 的 slug 非空且唯一,addr 合法。
+// ValidateTree 校验 tree 结构:entries 的 slug 非空且唯一、类型合法(note|dir)、addr 合法。
 func ValidateTree(t *Tree) error {
 	if t.Kind != KindTree {
 		return errKind(t.Kind)
@@ -41,6 +41,9 @@ func ValidateTree(t *Tree) error {
 			return fmt.Errorf("object: tree 出现重复 slug %q", e.Slug)
 		}
 		seen[e.Slug] = true
+		if !IsValidEntryType(e.Type) {
+			return fmt.Errorf("object: tree 条目 %q 的类型 %q 非法(期望 note|dir)", e.Slug, e.Type)
+		}
 		if err := validateAddr(e.Addr, "entry addr"); err != nil {
 			return err
 		}

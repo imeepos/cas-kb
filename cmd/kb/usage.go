@@ -7,10 +7,15 @@ func usage() {
 		"用法:\n" +
 		"  kb [-p 项目] <命令> …   # 项目作用域;亦可用 KB_PROJECT(默认 default)\n" +
 		"  kb init\n" +
-		"  kb note set <slug> [--title T] [--body B] [--tags a,b] [-m msg]\n" +
-		"  kb note get <slug> [--at 快照]\n" +
-		"  kb note rm <slug> [-m msg]\n" +
-		"  kb note ls [--json]      # JSON 含 slug/标题/标签/派生摘要\n" +
+		"  kb note set <路径> [--title T] [--body B] [--tags a,b] [-m msg]\n" +
+		"                            # 路径如 task 或 go/concurrency/channel(末段为条目名,父目录自动创建)\n" +
+		"  kb note get <路径> [--at 快照]\n" +
+		"  kb note rm <路径> [-m msg]\n" +
+		"  kb note ls [--dir 目录] [--json]   # 递归列出;JSON 含 path/标题/标签/派生摘要\n" +
+		"  kb dir add <目录> [-m msg]         # 建目录(mkdir -p 语义)\n" +
+		"  kb dir ls [目录] [--json]          # 列出直接子项(目录在前)\n" +
+		"  kb dir rm <目录> [-m msg] [--force] # 删目录;非空需 --force 递归\n" +
+		"  kb dir tree [目录]                 # 层级树(note 附标题)\n" +
 		"  kb log\n" +
 		"  kb diff <base> <tip>     # base/tip 可为分支名、地址或短标识(kb log 首列)\n" +
 		"  kb pull [remoteDsn] [--force]\n" +

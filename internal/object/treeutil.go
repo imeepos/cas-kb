@@ -10,25 +10,26 @@ func (t *Tree) Clone() *Tree {
 	return &cp
 }
 
-// Get 按 slug 查找条目地址。
-func (t *Tree) Get(slug string) (Address, bool) {
+// Lookup 按 slug 查找条目,返回完整条目(含类型)。
+func (t *Tree) Lookup(slug string) (TreeEntry, bool) {
 	for _, e := range t.Entries {
 		if e.Slug == slug {
-			return e.Addr, true
+			return e, true
 		}
 	}
-	return "", false
+	return TreeEntry{}, false
 }
 
-// Set 设置或覆盖一条目地址。slug 已存在时替换值。
-func (t *Tree) Set(slug string, addr Address) {
+// Set 设置或覆盖一条目(slug + 类型 + 地址)。slug 已存在时整体替换。
+func (t *Tree) Set(slug string, typ EntryType, addr Address) {
 	for i := range t.Entries {
 		if t.Entries[i].Slug == slug {
+			t.Entries[i].Type = typ
 			t.Entries[i].Addr = addr
 			return
 		}
 	}
-	t.Entries = append(t.Entries, TreeEntry{Slug: slug, Addr: addr})
+	t.Entries = append(t.Entries, TreeEntry{Slug: slug, Type: typ, Addr: addr})
 }
 
 // Delete 移除一条目;不存在时为空操作。

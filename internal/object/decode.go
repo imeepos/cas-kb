@@ -37,7 +37,8 @@ func DecodeNote(data []byte) (*Note, error) {
 	return &n, nil
 }
 
-// DecodeTree 解析 tree 对象。
+// DecodeTree 解析 tree 对象。条目类型必须合法(v4 起强制;
+// v3 旧格式条目无 type 字段,在此被响亮拒绝)。
 func DecodeTree(data []byte) (*Tree, error) {
 	var t Tree
 	if err := json.Unmarshal(data, &t); err != nil {
@@ -45,6 +46,12 @@ func DecodeTree(data []byte) (*Tree, error) {
 	}
 	if t.Kind != KindTree {
 		return nil, fmt.Errorf("object: tree 载荷 kind 为 %q,期望 %q", t.Kind, KindTree)
+	}
+	for _, e := range t.Entries {
+		if !IsValidEntryType(e.Type) {
+			return nil, fmt.Errorf("object: tree 条目 %q 的类型 %q 非法(期望 note|dir);"+
+				"可能是 v3 旧格式数据,请清库重建", e.Slug, e.Type)
+		}
 	}
 	return &t, nil
 }

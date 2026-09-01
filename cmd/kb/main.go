@@ -36,6 +36,8 @@ func main() {
 		must(cmdInit(ctx, args[1:]))
 	case "note":
 		must(cmdNote(ctx, args[1:]))
+	case "dir":
+		must(cmdDir(ctx, args[1:]))
 	case "log":
 		must(cmdLog(ctx, args[1:]))
 	case "diff":

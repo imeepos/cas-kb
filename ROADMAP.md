@@ -2,7 +2,7 @@
 
 每个里程碑交付可独立验收的能力;验收标准即测试用例的来源。
 
-> 状态:M1–M3.7 已交付并通过验收(M3.7=AI 选用元数据/schema v3);M4 为可选项,未开工。
+> 状态:M1–M3.8 已交付并通过验收(M3.8=目录层级/schema v4);M4 为可选项,未开工。
 
 ## M1 存储内核
 
@@ -74,6 +74,22 @@
 - 文档三处同步:schema.sql v3、DESIGN §2/§4.1/§4.6/§5.1、本节
 
 **状态**:已交付(描述列与版本门禁、store 读写契约、CLI 发现出口、派生摘要、e2e 全绿)。
+
+## M3.8 目录层级(schema v4)
+
+**范围**:tree 条目带类型(note|dir,dir 指向子 tree,目录可嵌套)、库 schema 版本 4(仅对象编码演进,表结构不变;旧库拒绝并指引重建,不做自动迁移)、条目全路径模型(目录链 + slug,`/` 分隔;单段路径与 M2 扁平用法兼容)、repo 路径读写与目录操作(Mkdir mkdir-p 幂等 / RemoveDir 空目录限制 + --force 递归 / DirLs / DirTree)、CLI `kb dir add|ls|rm|tree` 与 note 命令路径化、diff 路径级递归比较、fsck 条目类型一致性校验。
+
+**验收标准**
+- 全新库 init 后 schema_version=4;v3 存量库打开时拒绝服务并给出重建指引(由测试覆盖);v3 旧格式 tree(无 type)在 v4 解码时响亮拒绝
+- 嵌套路径条目 set/get roundtrip 逐字段一致;各层级 `note ls` 递归可见;`note get --at` 历史读取随路径自洽
+- 目录可多层嵌套;`dir add` 幂等(重复建不产生新快照);空目录是合法实体且 GC 不回收;删除条目后其所在目录保留
+- 中间段是条目、目标是目录、非法路径(`a//b`、`.`、`..` 等)均响亮失败
+- `dir rm` 非空目录拒绝,`--force` 递归删除;旧快照时间旅行不受影响;reset 放弃历史后 GC 清扫被删子树且 fsck 通过
+- diff 按全路径输出;目录间移动表现为旧路径 removed + 新路径 added 且地址不变(内容寻址)
+- 输出契约变化已记录(DESIGN §4.6):`note ls --json` 新增 path、`note get` 输出 path、diff 键为全路径、新增 `dir ls --json`
+- 文档三处同步:schema.sql v4、DESIGN §2/§3/§4.1/§4.6/§5.1/§6.1/§6.5、本节
+
+**状态**:已交付(嵌套路径模型、目录操作与 CLI、diff/GC/FSCK 适配、schema v4 门禁、单元 + 集成测试全绿)。
 
 ## M4 检索与集成(可选)
 

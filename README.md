@@ -2,14 +2,14 @@
 
 一句话定位:以**内容寻址存储(CAS)+ Merkle 树**为核心的知识库系统。
 存储引擎为 PostgreSQL(生产部署于主机 `102`),开发语言 **Go**,交付物为 CLI `kb`。
-本仓库包含设计文档、数据模型规格与实现代码:ROADMAP 的 **M1–M3.7 已交付**(存储内核、条目与版本、同步与运维、项目隔离、回退与历史读取、AI 选用元数据),M4(检索/HTTP API)为可选、未开工。
+本仓库包含设计文档、数据模型规格与实现代码:ROADMAP 的 **M1–M3.8 已交付**(存储内核、条目与版本、同步与运维、项目隔离、回退与历史读取、AI 选用元数据、目录层级),M4(检索/HTTP API)为可选、未开工。
 
 ## 文档导航
 
 | 文档 | 内容 |
 |---|---|
 | [DESIGN.md](DESIGN.md) | 完整设计:对象模型、存储设计、同步协议、GC、检索、部署与权衡 |
-| [schema.sql](schema.sql) | PostgreSQL 数据模型 DDL 规格(schema v3,含项目隔离与 AI 选用描述) |
+| [schema.sql](schema.sql) | PostgreSQL 数据模型 DDL 规格(schema v4,含项目隔离、AI 选用描述与目录层级) |
 | [ROADMAP.md](ROADMAP.md) | 落地路线图:M1–M4 里程碑与验收标准 |
 
 ## 核心思想(30 秒版)
@@ -19,7 +19,7 @@
 - 全库唯一的可变状态 = 分支指针表(`branches: (项目, 名字) → 快照地址`)
 - 版本历史 = 快照 DAG;同步 = 比较哈希、只传缺失对象;完整性 = 地址即校验和
 
-## 已交付能力(M1–M3.6)
+## 已交付能力(M1–M3.8)
 
 - **M1 存储内核**:hash / object / store 三层 + Postgres 迁移(`kb init`)
 - **M2 条目与版本**:`kb note set|get|rm|ls`、`kb log`、`kb diff`(支持分支名、快照地址或日志短标识)
@@ -27,6 +27,7 @@
 - **M3.5 项目隔离**:同库多项目互不可见(`-p 项目` / `KB_PROJECT` / `kb project ls|create`)
 - **M3.6 回退与历史读取**:`kb reset <短标识>` 放弃其后修改;`note get --at <快照>` 读取历史版本
 - **M3.7 AI 选用元数据**:项目/分支描述(`project create --desc`、`project desc`、`branch desc`)与 `project|branch ls --json` 机器可读清单;`note ls --json` 含派生摘要(schema v3)
+- **M3.8 目录层级**:条目按全路径定位(`note set go/concurrency/channel`),目录可嵌套(`kb dir add|ls|rm|tree`,mkdir -p 语义、非空删除需 `--force`);树对象编码演进为带类型条目(schema v4)
 
 ## 快速开始
 
@@ -34,6 +35,9 @@
     export KB_DSN=postgres://postgres:postgres@127.0.0.1:5432/caskb?sslmode=disable
     ./kb init
     ./kb note set hello --title 你好 --body "第一条笔记"
+    ./kb dir add go                       # 建目录(mkdir -p 语义)
+    ./kb note set go/concurrency/channel --title 通道 --body "chan 语义"
+    ./kb dir tree                         # 目录层级视图
     ./kb log
     ./kb project create notes --desc "另一个知识域"
     ./kb project ls --json                   # 机器可读项目清单(AI 选用入口)

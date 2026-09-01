@@ -19,8 +19,8 @@
 ```
               Snapshot = H(root + parents + time + msg)   ← 一个哈希代表全库一瞬
                   │
-              Tree = H(entries: slug → note 地址)          ← 目录也是内容寻址
-                │   │
+              Tree = H(entries: slug+type → note/子tree)   ← 目录也是内容寻址
+                │   │   └── Tree(子目录,M3.8 起可嵌套)
              Note  Note = H(meta + body地址 + links)        ← 条目节点
               │
             Blob(正文原始字节)                               ← 叶子
@@ -38,7 +38,7 @@
 |---|---|---|
 | `blob` | 正文原始字节(无信封) | 内容指纹 |
 | `note` | meta + body(blob 地址)+ links | 一条知识条目 |
-| `tree` | entries: slug → note 地址 | 目录/解析表 |
+| `tree` | entries: slug + type(note\|dir)→ 目标地址 | 目录/解析表;type=dir 指向子 tree,目录可嵌套(M3.8) |
 | `snapshot` | root(tree 地址)+ parents + time + message | 全库一个版本 |
 
 ### 3.1 note 字段规格
@@ -59,13 +59,13 @@
 - 字段集合变更 = 磁盘格式变更,**必须升级 `meta.schema_version`**,旧版本数据拒绝混用
 - blob 不编码,原样字节
 
-### 3.3 链接解析(版本自洽)
+### 3.3 路径与链接解析(版本自洽)
 
 笔记间链接只存人类可读的 **slug**,解析规则:**在当前快照的 root tree 中查 slug → 地址**。
 
 性质:任何历史快照内,链接指向该版本的对象;切换版本,解析随之一致(时间旅行一致性)。改了笔记 A,生成 A′(新地址)+ 新 tree,旧快照里链接依然解析到旧 A——双向链接永不悬空。
 
-MVP 的 tree 是扁平一层(slug → note);嵌套路径目录为演进项。
+**目录层级(M3.8)**:tree 条目带类型(note\|dir),dir 条目指向子 tree,目录可任意嵌套。条目全路径 = 目录段 + slug(如 `go/concurrency/channel`),`/` 是路径分隔符;单段路径即根目录条目,与 M2 扁平用法完全兼容。空目录是合法实体(空 entries 树,沿父链可达,GC 不回收);同目录内 slug 唯一 ⇒ 条目与目录天然不同名。链接 slug 的解析:先按全路径精确匹配;未命中再按叶子名全库唯一匹配,命中多个即报歧义并列出候选——规则确定且随快照自洽。
 
 ## 4. 存储设计(PostgreSQL)
 
@@ -78,7 +78,7 @@ MVP 的 tree 是扁平一层(slug → note);嵌套路径目录为演进项。
 - **branches** — `(project, name)(复合主键), addr(→ objects), updated_at, description`;**可变命名空间表(指针+描述)**,按项目划分命名空间
 - **meta** — `schema_version` 等键值;加载时版本不符直接拒绝(误配置报错要响)
 
-> 版本约定:库 schema 版本(meta.schema_version,当前 3)与对象编码版本(object.SchemaVersion)相互独立;v2 仅动表结构,v3 仅加描述列——对象编码与地址始终不变。
+> 版本约定:库 schema 版本(meta.schema_version,当前 4)与对象编码版本(object.SchemaVersion,note 内嵌,当前 1)相互独立;v2 仅动表结构,v3 仅加描述列,v4 仅演进 tree 对象编码(带类型条目,表结构不变)——note/snapshot 编码与地址规则始终不变。
 
 ### 4.2 为什么 Postgres 合适
 
@@ -113,13 +113,13 @@ MVP 的 tree 是扁平一层(slug → note);嵌套路径目录为演进项。
 - **不变量口径**:「唯一可变状态」由 branches 一张表放宽为 projects/branches 两张命名空间表(指针+描述);对象层仍只增不删。
 - **条目层**:note 对象格式不动(地址稳定优先)。AI 粗筛所需摘要由展示层从标题/标签/正文首段**派生**(`kb note ls` 的 JSON 输出),不改对象编码;把 description 写进 note JSON 属对象格式变更,列为演进项,须升级 object.SchemaVersion 并清库重建。
 - **发现出口**:`kb project ls --json` / `kb branch ls --json` 输出含描述的机器可读清单,AI 一次调用完成选用。
-- **输出契约**:机器消费一律走 `--json`(字段名与结构即契约,调整须在本文档与 ROADMAP 显式记录);文本输出面向人,列格式可能随版本调整——v3 起 `project ls` 文本为「名称/分支数/描述」三列,空描述显示「(未设置)」占位。惯例依据:clig.dev(人类输出为人调优、机器输出走稳定 stdout 通道)与 arduino-cli 向后兼容政策(输出格式变更视为破坏性变更,须显式声明)。
+- **输出契约**:机器消费一律走 `--json`(字段名与结构即契约,调整须在本文档与 ROADMAP 显式记录);文本输出面向人,列格式可能随版本调整——v3 起 `project ls` 文本为「名称/分支数/描述」三列,空描述显示「(未设置)」占位。惯例依据:clig.dev(人类输出为人调优、机器输出走稳定 stdout 通道)与 arduino-cli 向后兼容政策(输出格式变更视为破坏性变更,须显式声明)。v4 起契约变化:`note ls --json` 每行新增 `path` 字段(`slug` 保留为路径叶段);`note get` 文本首列由 `slug:` 改为 `path:`;`diff` 文本与结构化输出的条目键由 slug 改为全路径;新增 `dir ls --json`(每项 name/type/title)。
 
 ## 5. Go 工程结构(M1–M3.6 按此结构实现)
 
 ```
 cas-kb/
-├── cmd/kb/          CLI 入口:init / note / log / diff / pull / gc / fsck / reset / project / branch
+├── cmd/kb/          CLI 入口:init / note / dir / log / diff / pull / gc / fsck / reset / project / branch
 ├── internal/
 │   ├── hash/        地址类型、sha256 封装、格式校验
 │   ├── object/      四类对象定义、规范编解码、结构校验
@@ -143,7 +143,7 @@ cas-kb/
 | BranchGet / BranchSet / BranchDelete / BranchList / BranchDescribe | 均按项目作用域(repo 层注入项目);BranchSet 是快照推进的唯一写路径,UPSERT 仅更新 addr/updated_at(**不覆盖 description**),目标对象不存在时报错(FK 兜底);BranchDescribe 就地更新分支描述;BranchList 返回的 BranchRef 含描述 |
 | Close | 释放连接 |
 
-**repo.Repo**(业务层):PutNote / SetNote / RemoveNote / Note / ListNotes / Commit / Log / Diff / Pull / GC / FSCK。
+**repo.Repo**(业务层):SetNote / RemoveNote / Note / NoteAt / ListNotes(均按全路径定位条目,M3.8 起)+ Mkdir / RemoveDir / DirLs / DirTree(目录操作)+ Commit / Log / Diff(路径级比较)/ Pull / GC / FSCK。写路径沿目录链 copy-on-write:只重写受影响子树,兄弟子树地址结构共享。
 
 ## 6. 关键流程
 
@@ -151,9 +151,11 @@ cas-kb/
 
 ```
 读分支头(可能不存在)
-  → 加载 root tree 的 entries
-  → 写正文 blob → 写 note 对象 → entries[slug] = note 地址
-  → 写新 tree → 写新 snapshot(parents = [旧头])
+  → 解析条目全路径为目录链 + slug
+  → 写正文 blob → 写 note 对象
+  → 沿目录链 copy-on-write:叶子目录 entries[slug] = note 地址,
+    缺失中间目录自动创建,自底向上写新 tree、替换父条目地址
+  → 写新 snapshot(parents = [旧头])
   → UPSERT 分支指针
 ```
 
@@ -182,7 +184,7 @@ cas-kb/
 
 ### 6.5 FSCK
 
-- 全表逐对象重算哈希,与地址比对;按 kind 解码,校验内部引用(body/root/entries/parents 均存在)
+- 全表逐对象重算哈希,与地址比对;按 kind 解码,校验内部引用(body/root/entries/parents 均存在);tree 条目类型与目标对象 kind 一致(type=note → note 对象,type=dir → tree 对象,v4)
 - 输出问题清单,发现问题时退出码非零——可直接接 CI 巡检
 
 ### 6.6 引用解析
@@ -248,7 +250,8 @@ cas-kb/
 | CAS | 内容寻址存储,地址 = 内容哈希 |
 | Merkle 树 | 父节点哈希由子节点哈希构成的树,根哈希代表整体 |
 | 快照 snapshot | 全库一个版本的命名(root tree 地址) |
-| slug | 人类可读的条目名,链接解析的键 |
+| slug | 人类可读的条目名(路径叶段),链接解析的键 |
+| 目录 dir | tree 条目的类型之一,指向子 tree;目录可嵌套,空目录合法(路径 = 目录链 + slug) |
 | 项目 project | 知识库的命名空间单位;分支与版本按项目隔离,对象跨项目共享去重 |
 | fast-forward | 本地头是远端头的祖先时,直接推进分支无需合并 |
 | 3-way merge | 基于共同祖先的三方合并 |

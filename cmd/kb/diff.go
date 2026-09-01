@@ -25,11 +25,11 @@ func cmdDiff(ctx context.Context, args []string) error {
 	for _, c := range changes {
 		switch c.Type {
 		case "added":
-			fmt.Printf("A  %s -> %s\n", c.Slug, shortAddr(c.To))
+			fmt.Printf("A  %s -> %s\n", c.Path, shortAddr(c.To))
 		case "removed":
-			fmt.Printf("D  %s <- %s\n", c.Slug, shortAddr(c.From))
+			fmt.Printf("D  %s <- %s\n", c.Path, shortAddr(c.From))
 		case "updated":
-			fmt.Printf("M  %s %s -> %s\n", c.Slug, shortAddr(c.From), shortAddr(c.To))
+			fmt.Printf("M  %s %s -> %s\n", c.Path, shortAddr(c.From), shortAddr(c.To))
 		}
 	}
 	return nil

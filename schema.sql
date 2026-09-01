@@ -1,10 +1,13 @@
 -- =====================================================================
--- cas-kb PostgreSQL 数据模型规格(schema v3)
+-- cas-kb PostgreSQL 数据模型规格(schema v4)
 -- 目标库:102 主机 Docker PostgreSQL,数据库名 caskb
 -- 本文件是迁移的权威来源:实现侧的迁移逻辑必须与本文件一致
 -- v2 形态:projects 表 + branches 项目维度(复合主键)。
 -- v3 形态:projects/branches 各加 description 列(AI 选用元数据,DESIGN §4.6);
 --          仅加列,不改既有列与约束;对象编码与地址不受影响。
+-- v4 形态:表结构不变;tree 对象编码演进为带类型条目(DESIGN §3)——
+--          entries 从 slug→note 升级为 slug+type(note|dir),目录可嵌套;
+--          v3 旧格式 tree 字节无法通过 v4 解码,故整库门禁升至 4。
 -- 不做存量库自动迁移:版本不符时实现侧拒绝打开;老数据可弃则清库重建。
 -- =====================================================================
 
@@ -53,7 +56,7 @@ CREATE TABLE IF NOT EXISTS meta (
     value text NOT NULL
 );
 
-INSERT INTO meta (key, value) VALUES ('schema_version', '3')
+INSERT INTO meta (key, value) VALUES ('schema_version', '4')
 ON CONFLICT (key) DO NOTHING;
 
 -- 辅助索引:GC 报表与按类型扫描(可选,规模小可不建)

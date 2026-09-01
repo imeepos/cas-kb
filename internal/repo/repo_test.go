@@ -114,7 +114,7 @@ func TestM2_DiffOnlyUpdated(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(changes) != 1 || changes[0].Slug != "a" || changes[0].Type != ChangeUpdated {
+	if len(changes) != 1 || changes[0].Path != "a" || changes[0].Type != ChangeUpdated {
 		t.Fatalf("c1->c4 应只有 a updated,got %v", changes)
 	}
 }
@@ -128,7 +128,7 @@ func TestM2_DiffRemovedAndAdded(t *testing.T) {
 	}
 	got := map[string]string{}
 	for _, ch := range changes {
-		got[ch.Slug] = string(ch.Type)
+		got[ch.Path] = string(ch.Type)
 	}
 	if got["b"] != string(ChangeRemoved) || got["c"] != string(ChangeAdded) {
 		t.Fatalf("应含 b removed 与 c added,got %v", got)

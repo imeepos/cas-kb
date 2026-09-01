@@ -25,8 +25,8 @@ func noteGet(ctx context.Context, r *repo.Repo, args []string) error {
 	if err != nil {
 		return err
 	}
-	fmt.Printf("slug:  %s\naddr:  %s\ntitle: %s\ntags:  %s\n",
-		ref.Slug, ref.Addr, ref.Note.Meta.Title, strings.Join(ref.Note.Meta.Tags, ","))
+	fmt.Printf("path:  %s\naddr:  %s\ntitle: %s\ntags:  %s\n",
+		ref.Path, ref.Addr, ref.Note.Meta.Title, strings.Join(ref.Note.Meta.Tags, ","))
 	fmt.Printf("body:\n%s\n", string(ref.Body))
 	return nil
 }
@@ -52,11 +52,11 @@ func noteRm(ctx context.Context, r *repo.Repo, args []string) error {
 }
 
 func noteLs(ctx context.Context, r *repo.Repo, args []string) error {
-	f, err := parseFlags(args, nil)
+	f, err := parseFlags(args, map[string]bool{"--dir": true})
 	if err != nil {
 		return err
 	}
-	refs, err := r.ListNotes(ctx)
+	refs, err := r.ListNotes(ctx, f.get("--dir", ""))
 	if err != nil {
 		return err
 	}
@@ -66,6 +66,7 @@ func noteLs(ctx context.Context, r *repo.Repo, args []string) error {
 	}
 	if f.has("--json") {
 		type row struct {
+			Path      string   `json:"path"`
 			Slug      string   `json:"slug"`
 			Title     string   `json:"title"`
 			Tags      []string `json:"tags"`
@@ -78,12 +79,12 @@ func noteLs(ctx context.Context, r *repo.Repo, args []string) error {
 			if tags == nil {
 				tags = []string{}
 			}
-			rows = append(rows, row{Slug: ref.Slug, Title: ref.Note.Meta.Title, Tags: tags, CreatedAt: ref.Note.Meta.CreatedAt, Summary: firstSummary(ref.Body)})
+			rows = append(rows, row{Path: ref.Path, Slug: ref.Slug, Title: ref.Note.Meta.Title, Tags: tags, CreatedAt: ref.Note.Meta.CreatedAt, Summary: firstSummary(ref.Body)})
 		}
 		return printJSON(rows)
 	}
 	for _, ref := range refs {
-		fmt.Printf("%s\t%s\n", ref.Slug, ref.Note.Meta.Title)
+		fmt.Printf("%s\t%s\n", ref.Path, ref.Note.Meta.Title)
 	}
 	return nil
 }

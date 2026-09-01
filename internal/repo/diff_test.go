@@ -34,14 +34,14 @@ func TestM2_DiffAcrossBranchesByName(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(removed) != 1 || removed[0].Slug != "b" || removed[0].Type != ChangeRemoved {
+	if len(removed) != 1 || removed[0].Path != "b" || removed[0].Type != ChangeRemoved {
 		t.Fatalf("br_main->br_dev 应只有 b removed,got %v", removed)
 	}
 	added, err := r.Diff(ctx, "br_dev", "br_main")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(added) != 1 || added[0].Slug != "b" || added[0].Type != ChangeAdded {
+	if len(added) != 1 || added[0].Path != "b" || added[0].Type != ChangeAdded {
 		t.Fatalf("br_dev->br_main 应只有 b added,got %v", added)
 	}
 }
@@ -55,7 +55,7 @@ func TestM2_DiffByShortID(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(changes) != 1 || changes[0].Slug != "b" || changes[0].Type != ChangeAdded {
+	if len(changes) != 1 || changes[0].Path != "b" || changes[0].Type != ChangeAdded {
 		t.Fatalf("短标识 diff 应只有 b added,got %v", changes)
 	}
 }

@@ -3,6 +3,7 @@ package repo
 import (
 	"context"
 	"fmt"
+	"sort"
 
 	"github.com/imeepos/cas-kb/internal/hash"
 	"github.com/imeepos/cas-kb/internal/object"
@@ -18,15 +19,17 @@ const (
 	ChangeUpdated ChangeType = "updated"
 )
 
-// Change 是 tree 之间单条目的差异。
+// Change 是两个快照间单个条目按全路径的差异。
+// 条目跨目录移动表现为旧路径 removed + 新路径 added(地址不变)。
 type Change struct {
-	Slug string
+	Path string
 	Type ChangeType
 	From hash.Address // added 时为 ""
 	To   hash.Address // removed 时为 ""
 }
 
-// Diff 比较两个快照(分支名或地址)的 root tree,输出 added/removed/updated。
+// Diff 比较两个快照(分支名或地址)的条目差异(递归含子目录,按全路径)。
+// 输出按路径字典序排列,结果确定可复现。
 func (r *Repo) Diff(ctx context.Context, baseRef, tipRef string) ([]Change, error) {
 	base, err := r.resolveSnapshot(ctx, baseRef)
 	if err != nil {
@@ -36,39 +39,54 @@ func (r *Repo) Diff(ctx context.Context, baseRef, tipRef string) ([]Change, erro
 	if err != nil {
 		return nil, err
 	}
-	return compareTrees(base, tip)
-}
-
-// compareTrees 求两个 tree 的条目差异。
-func compareTrees(base, tip *object.Tree) ([]Change, error) {
-	bySlug := func(t *object.Tree) map[string]hash.Address {
-		m := make(map[string]hash.Address, len(t.Entries))
-		for _, e := range t.Entries {
-			m[e.Slug] = e.Addr
-		}
-		return m
+	bm := map[string]hash.Address{}
+	if err := r.flattenNotes(ctx, base, "", bm); err != nil {
+		return nil, fmt.Errorf("repo: 展开 base tree: %w", err)
 	}
-	b := bySlug(base)
-	c := bySlug(tip)
-	seen := map[string]bool{}
+	tm := map[string]hash.Address{}
+	if err := r.flattenNotes(ctx, tip, "", tm); err != nil {
+		return nil, fmt.Errorf("repo: 展开 tip tree: %w", err)
+	}
 	var changes []Change
-	for slug, addr := range c {
-		seen[slug] = true
-		if oa, ok := b[slug]; ok {
-			if oa != addr {
-				changes = append(changes, Change{Slug: slug, Type: ChangeUpdated, From: oa, To: addr})
+	for p, to := range tm {
+		if from, ok := bm[p]; ok {
+			if from != to {
+				changes = append(changes, Change{Path: p, Type: ChangeUpdated, From: from, To: to})
 			}
-		} else {
-			changes = append(changes, Change{Slug: slug, Type: ChangeAdded, To: addr})
-		}
-	}
-	for slug, addr := range b {
-		if seen[slug] {
 			continue
 		}
-		changes = append(changes, Change{Slug: slug, Type: ChangeRemoved, From: addr})
+		changes = append(changes, Change{Path: p, Type: ChangeAdded, To: to})
 	}
+	for p, from := range bm {
+		if _, ok := tm[p]; ok {
+			continue
+		}
+		changes = append(changes, Change{Path: p, Type: ChangeRemoved, From: from})
+	}
+	sort.SliceStable(changes, func(i, j int) bool { return changes[i].Path < changes[j].Path })
 	return changes, nil
+}
+
+// flattenNotes 递归把树展开为「全路径 → note 地址」映射(只收 note 条目)。
+func (r *Repo) flattenNotes(ctx context.Context, t *object.Tree, prefix string, out map[string]hash.Address) error {
+	for _, e := range t.Entries {
+		p := e.Slug
+		if prefix != "" {
+			p = prefix + PathSep + e.Slug
+		}
+		if e.Type == object.EntryDir {
+			sub, err := r.loadTree(ctx, e.Addr)
+			if err != nil {
+				return err
+			}
+			if err := r.flattenNotes(ctx, sub, p, out); err != nil {
+				return err
+			}
+			continue
+		}
+		out[p] = e.Addr
+	}
+	return nil
 }
 
 // resolveSnapshot 把分支名或地址解析为快照地址,再读取其 tree。

@@ -59,13 +59,34 @@ type Note struct {
 	Links []Link  `json:"links,omitempty"`
 }
 
-// TreeEntry 是树中的一个映射项:slug -> note 地址。
-type TreeEntry struct {
-	Slug string  `json:"slug"`
-	Addr Address `json:"addr"`
+// EntryType 是 tree 条目的目标类型:M3.8 起目录可嵌套,
+// 条目指向 note(知识条目)或 dir(子目录,即另一棵 tree)。
+type EntryType string
+
+// 两类条目类型常量。
+const (
+	EntryNote EntryType = "note"
+	EntryDir  EntryType = "dir"
+)
+
+// validEntryTypes 声明所有合法条目类型。
+var validEntryTypes = map[EntryType]bool{
+	EntryNote: true,
+	EntryDir:  true,
 }
 
-// Tree 是目录/解析表:扁平一层 slug -> note 地址。
+// IsValidEntryType 报告条目类型是否合法。
+func IsValidEntryType(t EntryType) bool { return validEntryTypes[t] }
+
+// TreeEntry 是树中的一个映射项:slug -> 目标地址。
+// type=note 时 addr 指向 note 对象;type=dir 时指向子 tree 对象(嵌套目录)。
+type TreeEntry struct {
+	Slug string    `json:"slug"`
+	Type EntryType `json:"type"`
+	Addr Address   `json:"addr"`
+}
+
+// Tree 是目录:一层 slug -> 条目(note 或子目录)。
 type Tree struct {
 	Kind    Kind        `json:"kind"`
 	Entries []TreeEntry `json:"entries"`
