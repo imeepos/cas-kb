@@ -23,6 +23,10 @@ func Encode(k Kind, v any) ([]byte, error) {
 		return EncodeTree(v.(*Tree))
 	case KindSnapshot:
 		return EncodeSnapshot(v.(*Snapshot))
+	case KindIndexRoot:
+		return EncodeIndexRoot(v.(*IndexRoot))
+	case KindIndexShard:
+		return EncodeIndexShard(v.(*IndexShard))
 	default:
 		return nil, errKind(k)
 	}
@@ -67,6 +71,34 @@ func EncodeSnapshot(s *Snapshot) ([]byte, error) {
 	cp := *s
 	cp.Parents = parents
 	return json.Marshal(cp)
+}
+
+// EncodeIndexRoot 编码索引根:文档表按地址排序,保证字节稳定。
+func EncodeIndexRoot(ir *IndexRoot) ([]byte, error) {
+	if ir.Kind != KindIndexRoot {
+		return nil, errKind(ir.Kind)
+	}
+	docs := append([]IndexDoc(nil), ir.Docs...)
+	sort.Slice(docs, func(i, j int) bool { return docs[i].Addr < docs[j].Addr })
+	cp := *ir
+	cp.Docs = docs
+	return json.Marshal(cp)
+}
+
+// EncodeIndexShard 编码索引分片:每个词元的倒排项按 note 地址排序。
+func EncodeIndexShard(s *IndexShard) ([]byte, error) {
+	if s.Kind != KindIndexShard {
+		return nil, errKind(s.Kind)
+	}
+	postings := make(map[string][]IndexPosting, len(s.Postings))
+	for term, list := range s.Postings {
+		cp := append([]IndexPosting(nil), list...)
+		sort.Slice(cp, func(i, j int) bool { return cp[i].Addr < cp[j].Addr })
+		postings[term] = cp
+	}
+	out := *s
+	out.Postings = postings
+	return json.Marshal(out)
 }
 
 // HashOf 计算对象规范编码的地址,供写入前使用。

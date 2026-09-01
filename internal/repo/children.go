@@ -35,6 +35,33 @@ func childrenOf(kind object.Kind, data []byte) ([]hash.Address, error) {
 		}
 		out := []hash.Address{s.Root}
 		out = append(out, s.Parents...)
+		if s.Index != "" {
+			out = append(out, s.Index) // M4:索引根随快照可达(GC/pull/fsck 共用)
+		}
+		return out, nil
+	case object.KindIndexRoot:
+		ir, err := object.DecodeIndexRoot(data)
+		if err != nil {
+			return nil, err
+		}
+		out := make([]hash.Address, 0, len(ir.Shards))
+		for _, a := range ir.Shards {
+			if a != "" {
+				out = append(out, a)
+			}
+		}
+		return out, nil
+	case object.KindIndexShard:
+		is, err := object.DecodeIndexShard(data)
+		if err != nil {
+			return nil, err
+		}
+		out := []hash.Address{}
+		for _, list := range is.Postings {
+			for _, p := range list {
+				out = append(out, p.Addr)
+			}
+		}
 		return out, nil
 	default:
 		return nil, fmt.Errorf("repo: 未知 kind %q", kind)

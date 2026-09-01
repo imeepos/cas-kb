@@ -17,6 +17,10 @@ func Decode(k Kind, data []byte) (any, error) {
 		return DecodeTree(data)
 	case KindSnapshot:
 		return DecodeSnapshot(data)
+	case KindIndexRoot:
+		return DecodeIndexRoot(data)
+	case KindIndexShard:
+		return DecodeIndexShard(data)
 	default:
 		return nil, fmt.Errorf("object: 未知 kind %q", k)
 	}
@@ -64,6 +68,30 @@ func DecodeSnapshot(data []byte) (*Snapshot, error) {
 	}
 	if s.Kind != KindSnapshot {
 		return nil, fmt.Errorf("object: snapshot 载荷 kind 为 %q,期望 %q", s.Kind, KindSnapshot)
+	}
+	return &s, nil
+}
+
+// DecodeIndexRoot 解析检索索引根对象。
+func DecodeIndexRoot(data []byte) (*IndexRoot, error) {
+	var ir IndexRoot
+	if err := json.Unmarshal(data, &ir); err != nil {
+		return nil, fmt.Errorf("object: indexroot 解码失败: %w", err)
+	}
+	if ir.Kind != KindIndexRoot {
+		return nil, fmt.Errorf("object: indexroot 载荷 kind 为 %q,期望 %q", ir.Kind, KindIndexRoot)
+	}
+	return &ir, nil
+}
+
+// DecodeIndexShard 解析检索索引分片对象。
+func DecodeIndexShard(data []byte) (*IndexShard, error) {
+	var s IndexShard
+	if err := json.Unmarshal(data, &s); err != nil {
+		return nil, fmt.Errorf("object: indexshard 解码失败: %w", err)
+	}
+	if s.Kind != KindIndexShard {
+		return nil, fmt.Errorf("object: indexshard 载荷 kind 为 %q,期望 %q", s.Kind, KindIndexShard)
 	}
 	return &s, nil
 }

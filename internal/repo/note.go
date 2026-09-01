@@ -270,18 +270,40 @@ func (r *Repo) noteAt(ctx context.Context, path string, addr hash.Address) (*Not
 	return &NoteRef{Path: path, Slug: slug, Addr: addr, Note: n, Body: body}, nil
 }
 
-// commitTree 写 tree + snapshot 并推进分支头。
+// commitTree 写 tree + snapshot(含检索索引)并推进分支头。
+// 索引按新旧 tree 的叶子差异增量重建(DESIGN §7):无差异时原地址复用,
+// 有差异时只重写受影响分片;旧快照无索引(历史数据)时全量构建。
 func (r *Repo) commitTree(ctx context.Context, t *object.Tree, msg string, hasHead bool) (hash.Address, error) {
+	var head hash.Address
+	var oldRootAddr hash.Address
+	var oldTree *object.Tree
+	if hasHead {
+		h, _, err := r.head(ctx)
+		if err != nil {
+			return "", err
+		}
+		head = h
+		prev, err := r.loadSnapshot(ctx, head)
+		if err != nil {
+			return "", err
+		}
+		oldRootAddr = prev.Index
+		ot, err := r.treeAtSnapshot(ctx, head)
+		if err != nil {
+			return "", err
+		}
+		oldTree = ot
+	}
+	idxAddr, err := r.updateIndex(ctx, oldRootAddr, oldTree, t)
+	if err != nil {
+		return "", err
+	}
 	treeAddr, err := r.putTree(ctx, t)
 	if err != nil {
 		return "", err
 	}
-	snap := &object.Snapshot{Kind: object.KindSnapshot, Root: treeAddr, Time: r.now(), Message: msg}
+	snap := &object.Snapshot{Kind: object.KindSnapshot, Root: treeAddr, Time: r.now(), Message: msg, Index: idxAddr}
 	if hasHead {
-		head, _, err := r.head(ctx)
-		if err != nil {
-			return "", err
-		}
 		snap.Parents = []hash.Address{head}
 	}
 	snapData, err := object.EncodeSnapshot(snap)

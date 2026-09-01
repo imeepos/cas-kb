@@ -15,10 +15,10 @@
 -- 不在对象上冗余标注项目。
 CREATE TABLE IF NOT EXISTS objects (
     addr  text    PRIMARY KEY,            -- 'sha256:<64位小写hex>',内容哈希即主键
-    kind  text    NOT NULL,               -- blob | note | tree | snapshot
+    kind  text    NOT NULL,               -- blob | note | tree | snapshot | indexroot | indexshard
     size  integer NOT NULL,               -- data 的字节数
     data  blob    NOT NULL,               -- blob 原始字节;其余为规范 JSON
-    CONSTRAINT objects_kind_check CHECK (kind IN ('blob','note','tree','snapshot')),
+    CONSTRAINT objects_kind_check CHECK (kind IN ('blob','note','tree','snapshot','indexroot','indexshard')),
     CONSTRAINT objects_addr_format_check CHECK (
         length(addr) = 71 AND addr GLOB 'sha256:[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]'
     )
@@ -57,7 +57,7 @@ CREATE TABLE IF NOT EXISTS meta (
     value text NOT NULL
 );
 
-INSERT INTO meta (key, value) VALUES ('schema_version', '4')
+INSERT INTO meta (key, value) VALUES ('schema_version', '5')
 ON CONFLICT (key) DO NOTHING;
 
 -- 辅助索引:与 schema.sql 一致(GC 报表与按类型扫描;项目维度列分支)

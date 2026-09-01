@@ -76,7 +76,8 @@ func (r *Repo) markReachable(ctx context.Context, addr hash.Address, marked map[
 	}
 	var kids []hash.Address
 	switch kind {
-	case object.KindNote, object.KindTree, object.KindSnapshot:
+	case object.KindNote, object.KindTree, object.KindSnapshot,
+		object.KindIndexRoot, object.KindIndexShard:
 		kids, err = childrenOf(kind, data)
 		if err != nil {
 			return fmt.Errorf("repo: GC 解析 %s(%s): %w", addr, kind, err)
