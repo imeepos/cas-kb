@@ -1,8 +1,8 @@
-# cas-kb — 基于内容寻址与 Merkle 树的知识库设计方案
+# cas-kb — 基于内容寻址与 Merkle 树的知识库
 
-一句话定位:以**内容寻址存储(CAS)+ Merkle 树**为核心的知识库系统设计方案。
-存储引擎为 Docker 化的 PostgreSQL(部署在主机 `102`),开发语言 **Go**。
-本仓库交付**设计文档与数据模型规格**,不含代码实现。
+一句话定位:以**内容寻址存储(CAS)+ Merkle 树**为核心的知识库系统。
+存储引擎为 PostgreSQL(生产部署于主机 `102`),开发语言 **Go**,交付物为 CLI `kb`。
+本仓库包含设计文档、数据模型规格与实现代码:ROADMAP 的 **M1–M3 已交付**(存储内核、条目与版本、同步与运维),M4(检索/HTTP API)为可选、未开工。
 
 ## 文档导航
 
@@ -19,13 +19,32 @@
 - 全库唯一的可变状态 = 分支指针表(`branches: 名字 → 快照地址`)
 - 版本历史 = 快照 DAG;同步 = 比较哈希、只传缺失对象;完整性 = 地址即校验和
 
+## 已交付能力(M1–M3)
+
+- **M1 存储内核**:hash / object / store 三层 + Postgres 迁移(`kb init`)
+- **M2 条目与版本**:`kb note set|get|rm|ls`、`kb log`、`kb diff`(支持分支名、快照地址或日志短标识)
+- **M3 同步与运维**:`kb pull`(祖先检查 /`--force`)、`kb gc`(清扫前自动备份分支表)、`kb fsck`
+
+## 快速开始
+
+    go build -o kb ./cmd/kb
+    export KB_DSN=postgres://postgres:postgres@127.0.0.1:5432/caskb?sslmode=disable
+    ./kb init
+    ./kb note set hello --title 你好 --body "第一条笔记"
+    ./kb log
+
+## 开发与测试
+
+    go build ./... && go vet ./... && go test ./...     # 单元测试,无需数据库
+    KB_TEST_DSN=postgres://... go test ./...            # 集成测试;每个用例派生独立临时库,未设置则跳过
+
 ## 环境假设
 
 | 项 | 值 |
 |---|---|
-| 数据库 | PostgreSQL 16,Docker 部署于主机 `102`(如 192.168.x.102:5432) |
+| 数据库 | PostgreSQL 16,生产 Docker 部署于主机 `102`(如 192.168.x.102:5432);本地开发用任意可达实例 |
 | 数据库名 | `caskb` |
 | 开发语言 | Go ≥ 1.22,驱动 pgx/v5 |
 | 接入形态 | CLI 优先(`kb` 命令),HTTP API 列为 M4 可选 |
 
-连接串、账号与安全要求见 [DESIGN.md](DESIGN.md) 第 8 节。
+连接串、账号与安全要求见 [DESIGN.md](DESIGN.md) 第 8 节;配置项清单见第 8.2 节。
