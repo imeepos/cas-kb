@@ -38,13 +38,18 @@ type doctorEnv struct {
 }
 
 // open 打开(含迁移)存储并构造仓库对象,结果缓存;失败原样返回。
+// 注意只在成功时保存连接:openSQLite 失败时返回类型化 nil(*SQLite)(nil),
+// 存进接口后 e.s != nil 判真,误调 Close 会崩。
 func (e *doctorEnv) open() (store.Store, *repo.Repo, error) {
 	if !e.opened {
 		e.opened = true
-		e.s, e.storeErr = openStore(e.ctx)
-		if e.storeErr == nil {
-			e.r = repo.Open(e.s, repo.Config{Project: projectName(), Branch: branchName()})
+		s, err := openStore(e.ctx)
+		if err != nil {
+			e.storeErr = err
+			return nil, nil, err
 		}
+		e.s = s
+		e.r = repo.Open(e.s, repo.Config{Project: projectName(), Branch: branchName()})
 	}
 	return e.s, e.r, e.storeErr
 }
