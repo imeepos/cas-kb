@@ -145,8 +145,10 @@ HTTP API(AI/Agent 免 shell 消费与写入;DESIGN §8.5/§8.6):
 
 ## 开发与测试
 
-    ./scripts/verify.sh                                  # 单一质量门禁:gofmt/构建/vet/测试(默认含 SQLite 全套集成)
+    ./scripts/verify.sh                                  # 单一质量门禁:gofmt/构建/vet/测试(默认含 SQLite 全套集成;DRILL=1 追加 drill)
     KB_TEST_DSN=postgres://... ./scripts/verify.sh       # 设置后追加 PostgreSQL 集成回归;每个用例派生独立临时库
+    ./scripts/drill-multi.sh                             # 多端互写演练(T42 剧本固化,TAP 式逐腿断言;独立跑,季度/发版前)
+    ./scripts/drill-serve.sh                             # serve 运维演练(T43 剧本固化,绑定/令牌/鉴权/503;独立跑,季度/发版前)
     ./scripts/e2e.sh                                     # 端到端验收(默认 SQLite 临时库):完整生命周期
     ./scripts/e2e.sh postgres://...                      # 同一生命周期跑 PostgreSQL 后端(含 pg_dump 备份路径)
     ./scripts/backup.sh [DSN]                            # 库备份 → backups/(git 忽略),文件名含库版本与时间戳

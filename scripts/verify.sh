@@ -25,6 +25,17 @@ go test ./...
 echo "== e2e(SQLite)=="
 ./scripts/e2e.sh
 
+# 演练固化脚本(T47-C,drill-multi/drill-serve):默认不进门禁——多进程/多库/持锁制造
+# 时长敏感,放默认会让每次提交门禁翻倍(调研 §3.3);DRILL=1 选择性追加,季度/发版前
+# 也可独立跑 ./scripts/drill-multi.sh && ./scripts/drill-serve.sh
+if [ "${DRILL:-0}" = "1" ]; then
+  echo "== drill(T47-C 演练固化)=="
+  ./scripts/drill-multi.sh
+  ./scripts/drill-serve.sh
+else
+  echo "DRILL 未设置,跳过 drill 演练(需要时:DRILL=1 ./scripts/verify.sh 或独立跑两脚本)"
+fi
+
 if [ -n "${KB_TEST_DSN:-}" ]; then
   go test -count=1 ./...
 else
