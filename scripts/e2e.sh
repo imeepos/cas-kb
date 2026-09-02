@@ -172,5 +172,21 @@ step "旧快照数据保留";         has "SA" "$($KB -p alpha note get st/a --a
 step "被精简快照检索友好报错";  out=$($KB -p alpha search H12 --at "$PREV" 2>&1) || true; has "已被 gc 精简" "$out"
 step "fsck 水印豁免";         has "完整,无问题" "$($KB -p alpha fsck)"
 
+# ---- 只读 HTTP API(kb serve)----
+command -v curl >/dev/null || { echo "e2e(serve) 需要 curl"; exit 1; }
+step "后台起 kb serve";        SERVE_LOG="$WORK/serve.log"; "$KB" -p alpha serve --addr 127.0.0.1:0 > "$SERVE_LOG" 2>&1 & SERVE_PID=$!
+SERVE_URL=""
+for _ in $(seq 1 50); do
+  SERVE_URL=$(grep -m1 '^监听' "$SERVE_LOG" 2>/dev/null | awk '{print $NF}' || true)
+  if [ -n "$SERVE_URL" ]; then break; fi
+  sleep 0.1
+done
+[ -n "$SERVE_URL" ] || { echo "断言失败: serve 未在 5s 内就绪: $(cat "$SERVE_LOG")"; kill "$SERVE_PID" 2>/dev/null || true; exit 1; }
+step "serve healthz 探活";     has '"ok": true' "$(curl -sf "$SERVE_URL/healthz")"
+step "serve api note 读单条";  has '"title": "A1"' "$(curl -sf "$SERVE_URL/api/v1/note?path=task")"
+step "serve api search 检索";  has '"path": "hist/n12"' "$(curl -sf -G "$SERVE_URL/api/v1/search" --data-urlencode 'q=H12')"
+step "serve 只读纪律 POST 405"; code=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$SERVE_URL/api/v1/note"); [ "$code" = "405" ] || { echo "断言失败: POST 应 405,得到 $code"; exit 1; }
+step "kill serve 优雅退出";    kill "$SERVE_PID"; wait "$SERVE_PID" || { echo "断言失败: serve 应优雅退出(退出码 0): $(cat "$SERVE_LOG")"; exit 1; }
+
 step "gc + fsck";            out=$($KB gc); has "已备份" "$out"; has "完整,无问题" "$($KB fsck)"
 echo "E2E_GREEN"

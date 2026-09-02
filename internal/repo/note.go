@@ -254,7 +254,7 @@ func (r *Repo) walkDir(ctx context.Context, t *object.Tree, parts []string) (*ob
 			return nil, fmt.Errorf("repo: 目录 %q 不存在: %w", JoinPath(parts[:i+1]), store.ErrNotFound)
 		}
 		if e.Type != object.EntryDir {
-			return nil, fmt.Errorf("repo: %q 是条目,不是目录", JoinPath(parts[:i+1]))
+			return nil, fmt.Errorf("repo: %q 是条目,不是目录: %w", JoinPath(parts[:i+1]), ErrEntryTypeConflict)
 		}
 		sub, err := r.loadTree(ctx, e.Addr)
 		if err != nil {
@@ -276,7 +276,7 @@ func (r *Repo) leafEntry(ctx context.Context, t *object.Tree, dirs []string, slu
 		return object.TreeEntry{}, fmt.Errorf("repo: 条目 %q 不存在: %w", JoinPath(append(dirs, slug)), store.ErrNotFound)
 	}
 	if e.Type != object.EntryNote {
-		return object.TreeEntry{}, fmt.Errorf("repo: %q 是目录,不是条目", JoinPath(append(dirs, slug)))
+		return object.TreeEntry{}, fmt.Errorf("repo: %q 是目录,不是条目: %w", JoinPath(append(dirs, slug)), ErrEntryTypeConflict)
 	}
 	return e, nil
 }

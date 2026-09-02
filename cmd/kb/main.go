@@ -46,6 +46,8 @@ func main() {
 		must(cmdImport(ctx, args[1:]))
 	case "search":
 		must(cmdSearch(ctx, args[1:]))
+	case "serve":
+		must(cmdServe(ctx, args[1:]))
 	case "dir":
 		must(cmdDir(ctx, args[1:]))
 	case "log":

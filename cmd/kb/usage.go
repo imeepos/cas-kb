@@ -23,7 +23,7 @@ func usage() {
 		"  kb dir tree [目录]                 # 层级树(note 附标题);不带 -p/KB_PROJECT 时展示全库视图(项目为顶层)\n" +
 		"  kb log\n" +
 		"  kb stage | kb commit [-m msg] [--abort]  # 暂存工作流:--stage 变更累积,commit 一次提交\n" +
-		"  kb diff <base> <tip>     # base/tip 可为分支名、地址或短标识(kb log 首列)\n" +
+		"  kb diff <base> <tip> [--json]  # base/tip 可为分支名、地址或短标识(kb log 首列);JSON 行含 path/type/from/to\n" +
 		"  kb pull [remoteDsn] [--force]\n" +
 		"  kb gc [--keep-last K]  # 垃圾回收;--keep-last 只保留最近 K 个快照的检索索引\n" +
 		"  kb fsck\n" +
@@ -35,6 +35,7 @@ func usage() {
 		"  kb restore <文件> [--force]  # 恢复备份;目标非空需 --force(先清空)\n" +
 		"  kb wipe [--force]       # 清空整库并重置为全新库;需 --force\n" +
 		"  kb update [--yes] [--repo owner/name]  # 检查 GitHub 最新 Release;--yes 下载并替换本二进制\n" +
+		"  kb serve [--addr 127.0.0.1:8787]  # 只读 HTTP API(默认只绑回环):/healthz /api/v1/projects|tree|note|search|log|diff\n" +
 		"  kb version              # 显示版本号\n\n" +
 		"环境变量:\n" +
 		"  KB_DSN       库连接串:SQLite 路径(默认 ~/.local/share/caskb/caskb.db;可加 sqlite: 前缀)\n" +

@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/imeepos/cas-kb/internal/hash"
+	"github.com/imeepos/cas-kb/internal/view"
 )
 
 func cmdLog(ctx context.Context, args []string) error {
@@ -36,10 +37,5 @@ func cmdLog(ctx context.Context, args []string) error {
 	return nil
 }
 
-// shortAddr 截断地址便于展示。
-func shortAddr(a hash.Address) string {
-	if len(a) > 16 {
-		return string(a[:16])
-	}
-	return string(a)
-}
+// shortAddr 截断地址便于展示;委托 view.ShortAddr(与 /api/v1/log 的短标识同构)。
+func shortAddr(a hash.Address) string { return view.ShortAddr(a) }

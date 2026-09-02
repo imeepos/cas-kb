@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/imeepos/cas-kb/internal/repo"
+	"github.com/imeepos/cas-kb/internal/view"
 )
 
 func noteGet(ctx context.Context, r *repo.Repo, args []string) error {
@@ -81,23 +82,8 @@ func noteLs(ctx context.Context, r *repo.Repo, args []string) error {
 		return nil
 	}
 	if f.has("--json") {
-		type row struct {
-			Path      string   `json:"path"`
-			Slug      string   `json:"slug"`
-			Title     string   `json:"title"`
-			Tags      []string `json:"tags"`
-			CreatedAt int64    `json:"created_at"`
-			Summary   string   `json:"summary"`
-		}
-		rows := make([]row, 0, len(refs))
-		for _, ref := range refs {
-			tags := ref.Note.Meta.Tags
-			if tags == nil {
-				tags = []string{}
-			}
-			rows = append(rows, row{Path: ref.Path, Slug: ref.Slug, Title: ref.Note.Meta.Title, Tags: tags, CreatedAt: ref.Note.Meta.CreatedAt, Summary: firstSummary(ref.Body)})
-		}
-		return printJSON(rows)
+		// 行契约复用 internal/view(摘要派生规则同源)
+		return printJSON(view.NoteLsRows(refs))
 	}
 	for _, ref := range refs {
 		fmt.Printf("%s\t%s\n", ref.Path, ref.Note.Meta.Title)
