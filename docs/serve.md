@@ -54,6 +54,8 @@ umask 077 && echo "KB_SERVE_TOKEN=<上一步输出>" >> /etc/caskb/serve.env
 
 ### 2.4 无令牌 = 纯只读的降级行为表
 
+实际响应体为 2 空格缩进 JSON + 换行;下表示例以紧凑单行表意,error 文案逐字一致。
+
 | 状态 | POST/DELETE /api/v1/note | 读端点(/healthz、/api/v1/* GET) |
 |---|---|---|
 | 未配置令牌(空 `KB_SERVE_TOKEN`) | `403` + `{"error":"服务未配置写入令牌,当前为只读模式;设置 KB_SERVE_TOKEN 后启用"}` | 无鉴权,照常可用 |
@@ -127,6 +129,8 @@ WantedBy=multi-user.target
 ```
 
 ```bash
+# caskb 用户/组不存在则创建,已存在则跳过(groupadd -f 幂等)
+sudo groupadd -f caskb && sudo useradd -r -g caskb -s /usr/sbin/nologin caskb
 sudo install -d -o caskb -g caskb /var/lib/caskb /etc/caskb
 sudo touch /etc/caskb/serve.env && sudo chmod 600 /etc/caskb/serve.env
 sudo systemctl daemon-reload && sudo systemctl enable --now caskb-serve
@@ -146,7 +150,7 @@ launchd 原生没有 EnvironmentFile,用 `sh -c` 先 source 环境文件再 exec
   <key>ProgramArguments</key>
   <array>
     <string>/bin/sh</string><string>-c</string>
-    <string>. "$HOME/.config/caskb/serve.env" && exec /usr/local/bin/kb serve --addr 127.0.0.1:8787</string>
+    <string>. "$HOME/.config/caskb/serve.env" &amp;&amp; exec /usr/local/bin/kb serve --addr 127.0.0.1:8787</string>
   </array>
   <key>RunAtLoad</key><true/>
   <key>KeepAlive</key><true/>
@@ -172,7 +176,8 @@ launchctl kickstart -k gui/$UID/com.caskb.serve                             # �
 ```bash
 ss -ltnp 'sport = :8787'            # Linux:谁在监听
 lsof -nP -iTCP:8787 -sTCP:LISTEN    # macOS 同效
-pgrep -af 'kb serve'                # 是否有旧实例未退
+pgrep -af 'kb serve'                # Linux(procps):列出 PID 与命令行,看有无旧实例
+ps -Ao command | grep '[k]b serve'  # macOS:pgrep -af 只输出 PID,须用此等价命令(方括号避免 grep 自匹配)
 ```
 
 处理:停掉旧实例/占用者,或换端口 `--addr 127.0.0.1:9000`;临时/测试实例可用 `--addr 127.0.0.1:0` 由内核分配端口(实际地址以启动横幅为准)。
@@ -193,12 +198,13 @@ pgrep -af 'kb serve'                # 是否有旧实例未退
 
 ```bash
 # 期望输出 0;-f 直接读令牌文件做模式,避免令牌进 grep 的 argv
+# 判定以输出的计数值 0 为准,勿以 grep 退出码判定(无匹配时 grep 退出码为 1)
 grep -cFf <(awk -F= '/^KB_SERVE_TOKEN=/{print $2}' /etc/caskb/serve.env) \
           <(journalctl -u caskb-serve --no-pager)                 # systemd
 # launchd 换日志文件:grep -cFf <(awk …) /tmp/caskb-serve.err.log
 ```
 
-再核两点:1) `ps` 命令列(`pgrep -af 'kb serve'`)看不到令牌——若误用 `--token` 旗标,令牌会出现在命令行上(`ps` 可见、可能进 shell 历史),这正是 §2.1 推荐环境变量注入的原因;2) 环境文件权限确为 600 且未被纳入任何版本库。任一核验命中,按 §2.2 立即轮换并排查泄漏源。
+再核两点:1) `ps` 命令列看不到令牌——注意 macOS(BSD pgrep)的 `pgrep -af 'kb serve'` 只输出 PID 不带命令行,须用等价命令 `ps -Ao command | grep '[k]b serve'`(方括号避免 grep 自匹配)才能真正看到命令列;若误用 `--token` 旗标,令牌会出现在命令行上(`ps` 可见、可能进 shell 历史),这正是 §2.1 推荐环境变量注入的原因;2) 环境文件权限确为 600 且未被纳入任何版本库。任一核验命中,按 §2.2 立即轮换并排查泄漏源。
 
 ## 7. 安全清单
 
