@@ -3,7 +3,6 @@ package repo
 import (
 	"context"
 	"errors"
-	"fmt"
 	"sort"
 
 	"github.com/imeepos/cas-kb/internal/hash"
@@ -77,7 +76,17 @@ func (r *Repo) ensureStageBase(ctx context.Context) error {
 }
 
 // StageNote 暂存一条条目写入(不建索引,不进正式分支历史)。
+// 合并中态下 --stage 升格为裁决动作:写入 <branch>-merge 视图(基线快照已建,
+// 不触碰 <branch>-stage 暂存分支),由 kb merge --continue 收束。
 func (r *Repo) StageNote(ctx context.Context, path string, in NoteInput, msg string) (hash.Address, hash.Address, error) {
+	merging, err := r.mergingNow(ctx)
+	if err != nil {
+		return "", "", err
+	}
+	if merging {
+		mv := r.mergeView()
+		return mv.SetNote(ctx, path, in, "merge: "+msg)
+	}
 	if err := r.ensureStageBase(ctx); err != nil {
 		return "", "", err
 	}
@@ -85,8 +94,16 @@ func (r *Repo) StageNote(ctx context.Context, path string, in NoteInput, msg str
 	return sr.SetNote(ctx, path, in, "stage: "+msg)
 }
 
-// StageRemoveNote 暂存一条条目删除。
+// StageRemoveNote 暂存一条条目删除(合并中态为裁决动作,语义同 StageNote)。
 func (r *Repo) StageRemoveNote(ctx context.Context, path, msg string) (hash.Address, error) {
+	merging, err := r.mergingNow(ctx)
+	if err != nil {
+		return "", err
+	}
+	if merging {
+		mv := r.mergeView()
+		return mv.RemoveNote(ctx, path, "merge: "+msg)
+	}
 	if err := r.ensureStageBase(ctx); err != nil {
 		return "", err
 	}
@@ -94,9 +111,18 @@ func (r *Repo) StageRemoveNote(ctx context.Context, path, msg string) (hash.Addr
 	return sr.RemoveNote(ctx, path, "stage: "+msg)
 }
 
-// StageRemoveDir 暂存一次目录删除(recursive 语义同 RemoveDir)。
-// 空目录新增不支持暂存(dir add --stage 在 CLI 层拒绝),删除后空目录自然消失。
+// StageRemoveDir 暂存一次目录删除(recursive 语义同 RemoveDir;合并中态为
+// 裁决动作)。空目录新增不支持暂存(dir add --stage 在 CLI 层拒绝),
+// 删除后空目录自然消失。
 func (r *Repo) StageRemoveDir(ctx context.Context, path, msg string, recursive bool) (hash.Address, error) {
+	merging, err := r.mergingNow(ctx)
+	if err != nil {
+		return "", err
+	}
+	if merging {
+		mv := r.mergeView()
+		return mv.RemoveDir(ctx, path, "merge: "+msg, recursive)
+	}
 	if err := r.ensureStageBase(ctx); err != nil {
 		return "", err
 	}
@@ -214,6 +240,11 @@ func (r *Repo) stagedChanges(ctx context.Context, baseSnap, stageSnap *object.Sn
 // 一次树差异计算 → 一次索引批量增量 → 单快照推进;随后清理暂存分支。
 // 语义:以暂存为准覆盖同名路径;main 上其他路径的变更保留(非三方合并)。
 func (r *Repo) CommitStage(ctx context.Context, msg string) (hash.Address, int, error) {
+	// 冻结纪律:合并中态拒绝普通提交(防止把合并裁决误当普通暂存;
+	// 裁决条目走 --stage,由 kb merge --continue 收束)
+	if err := r.rejectIfMerging(ctx, "commit"); err != nil {
+		return "", 0, err
+	}
 	stageHead, stageSnap, err := r.stageSnapshot(ctx)
 	if err != nil {
 		return "", 0, err
@@ -236,41 +267,11 @@ func (r *Repo) CommitStage(ctx context.Context, msg string) (hash.Address, int, 
 	if err != nil {
 		return "", 0, err
 	}
-	newTree := mainTree.Clone()
-	applied := 0
-	for _, ch := range changes {
-		dirs, slug, err := SplitNotePath(ch.Path)
-		if err != nil {
-			return "", 0, err
-		}
-		if ch.Removed {
-			if _, werr := r.walkDir(ctx, newTree, dirs); werr != nil {
-				applied++ // 目录链在 main 已不存在:删除目标已不在,视为已应用
-				continue
-			}
-			_, err = r.mutateAt(ctx, newTree, dirs, func(dir *object.Tree) error {
-				if e, ok := dir.Lookup(slug); ok && e.Type == object.EntryNote {
-					dir.Delete(slug)
-				}
-				return nil
-			})
-			if err != nil {
-				return "", 0, err
-			}
-			applied++
-			continue
-		}
-		_, err = r.mutateAt(ctx, newTree, dirs, func(dir *object.Tree) error {
-			if e, ok := dir.Lookup(slug); ok && e.Type == object.EntryDir {
-				return fmt.Errorf("repo: %q 是目录,不能作为条目写入", ch.Path)
-			}
-			dir.Set(slug, object.EntryNote, ch.Addr)
-			return nil
-		})
-		if err != nil {
-			return "", 0, err
-		}
-		applied++
+	// 差异应用与合并收束同路径(mergestate.applyStagedChanges):以 main 当前树
+	// 为底,同名路径以暂存为准覆盖,其余保留(非三方合并)
+	newTree, applied, err := r.applyStagedChanges(ctx, mainTree, changes)
+	if err != nil {
+		return "", 0, err
 	}
 	// 索引:main 旧索引 + 全部暂存差异 = 一次批量增量
 	var oldRootAddr hash.Address

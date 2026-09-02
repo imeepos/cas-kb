@@ -35,6 +35,14 @@ func (p *PG) MetaSet(ctx context.Context, key, value string) error {
 	return nil
 }
 
+// MetaDelete 删除 meta 表键;键不存在等价空操作(幂等)。(PostgreSQL)
+func (p *PG) MetaDelete(ctx context.Context, key string) error {
+	if _, err := p.pool.Exec(ctx, "DELETE FROM meta WHERE key = $1", key); err != nil {
+		return fmt.Errorf("store: MetaDelete 失败: %w", err)
+	}
+	return nil
+}
+
 // MetaGet 读取 meta 表键值;键不存在返回 ErrNotFound。(SQLite)
 func (s *SQLite) MetaGet(ctx context.Context, key string) (string, error) {
 	var v string
@@ -54,6 +62,14 @@ func (s *SQLite) MetaSet(ctx context.Context, key, value string) error {
 		"INSERT INTO meta (key, value) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value",
 		key, value); err != nil {
 		return fmt.Errorf("store: MetaSet 失败: %w", err)
+	}
+	return nil
+}
+
+// MetaDelete 删除 meta 表键;键不存在等价空操作(幂等)。(SQLite)
+func (s *SQLite) MetaDelete(ctx context.Context, key string) error {
+	if _, err := s.db.ExecContext(ctx, "DELETE FROM meta WHERE key = ?", key); err != nil {
+		return fmt.Errorf("store: MetaDelete 失败: %w", err)
 	}
 	return nil
 }

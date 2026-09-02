@@ -66,6 +66,9 @@ func (r *Repo) BulkImport(ctx context.Context, items []BulkInput, msg string) (h
 	if len(items) == 0 {
 		return "", 0, errors.New("repo: 批量导入为空")
 	}
+	if err := r.rejectIfMerging(ctx, "bulk import"); err != nil {
+		return "", 0, err
+	}
 	t, hasHead, err := r.currentTree(ctx)
 	if err != nil {
 		return "", 0, err

@@ -45,10 +45,12 @@ type Store interface {
 	ProjectStats(ctx context.Context) ([]ProjectStat, error)
 	ProjectGet(ctx context.Context, name string) (ProjectStat, error)
 	ProjectDescribe(ctx context.Context, name, description string) error
-	// MetaGet/MetaSet 读写 meta 表键值(库级 KV);键不存在返回 ErrNotFound。
-	// schema_version 等系统键由迁移层管理,不经过本接口。
+	// MetaGet/MetaSet/MetaDelete 读写删 meta 表键值(库级 KV);
+	// Get/Delete 键不存在返回 ErrNotFound。schema_version 等系统键由迁移层
+	// 管理,不经过本接口。
 	MetaGet(ctx context.Context, key string) (string, error)
 	MetaSet(ctx context.Context, key, value string) error
+	MetaDelete(ctx context.Context, key string) error
 	BranchGet(ctx context.Context, project, name string) (hash.Address, error)
 	BranchSet(ctx context.Context, project, name string, addr hash.Address) error
 	BranchDelete(ctx context.Context, project, name string) error

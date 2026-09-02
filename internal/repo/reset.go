@@ -19,6 +19,9 @@ type ResetResult struct {
 // Reset 把当前分支指针回退到 ref(本项目可达的分支名/地址/短标识)。
 // 目标必须是当前头的祖先(或当前头本身);被放弃的提交在下次 GC 前仍可经完整地址访问。
 func (r *Repo) Reset(ctx context.Context, ref string) (ResetResult, error) {
+	if err := r.rejectIfMerging(ctx, "reset"); err != nil {
+		return ResetResult{}, err
+	}
 	target, err := r.Resolve(ctx, ref)
 	if err != nil {
 		return ResetResult{}, err
