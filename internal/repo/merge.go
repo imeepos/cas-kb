@@ -46,8 +46,9 @@ type MergeConflict struct {
 }
 
 // ErrMergeNoCommonHistory 表示两分支头没有共同祖先(如两库各自 init),
-// 无法三方合并。文案可行动:确认两端同源,或显式改用覆盖语义。
-var ErrMergeNoCommonHistory = errors.New("repo: 两库无共同历史,无法三方合并(确认两端同源,或改用 --force 覆盖)")
+// v1 默认拒绝三方合并。T44 D2:文案随空基线合并分流——指引 --force 覆盖,
+// 或显式 --merge --allow-unrelated 做空基线合并(修复与分叉指引的断裂)。
+var ErrMergeNoCommonHistory = errors.New("repo: 两库无共同历史,无法三方合并(--force 覆盖,或 --merge --allow-unrelated 做空基线合并)")
 
 // ErrMergeMultipleBases 表示检出多个最近公共祖先(蟹状历史)。
 // v1 策略(调研 §2.2 方案甲):响亮拒绝并列出全部候选,由调用方以
@@ -412,6 +413,11 @@ type MergeOptions struct {
 	// Base 是显式基准(分支名/完整地址/短标识);多 LCA(蟹状历史)时必填,
 	// 必须是候选之一(调研 §2.2 方案甲)。
 	Base string
+	// AllowUnrelated 允许无共同历史时空基线三方合并(T44 D2):仅当
+	// MergeBase 判定无共同祖先时生效——base=空树,两侧条目均视为新增,
+	// 判定复用 mergeTrees 同一判定表;有共同祖先时本旗标不改变任何行为
+	// (与 git allow-unrelated-histories 同义)。
+	AllowUnrelated bool
 }
 
 // MergeResult 汇报一次合并。
@@ -444,6 +450,13 @@ func (r *Repo) Merge(ctx context.Context, src store.Store, srcProject, srcBranch
 	}
 	theirsHead, err := src.BranchGet(ctx, srcProject, srcBranch)
 	if err != nil {
+		// D1(T44):远端项目存在但分支不存在(零提交)→ 无新内容可合,
+		// 与 Pull 同款「已是最新」空操作(对称语义,不另造指引断裂)。
+		if errors.Is(err, store.ErrBranchNotFound) {
+			if _, perr := src.ProjectGet(ctx, srcProject); perr == nil {
+				return MergeResult{UpToDate: true}, nil
+			}
+		}
 		return MergeResult{}, fmt.Errorf("repo: 远端分支 %q: %w", srcBranch, err)
 	}
 	oursHead, hasLocal, err := r.head(ctx)
@@ -492,23 +505,36 @@ func (r *Repo) Merge(ctx context.Context, src store.Store, srcProject, srcBranch
 	}
 	// 分叉:三方合并
 	mb, err := r.MergeBase(ctx, oursHead, theirsHead, opt.Base)
+	emptyBase := false
 	if err != nil {
-		return res, err
+		// T44 D2:无共同历史 + 显式 --allow-unrelated → 空基线三方合并
+		// (base=空树,两侧条目均视为新增;同路径同地址自动合,异地址按
+		// 既有判定表记冲突,不写第二套判定);后续落库/中间态/--continue/
+		// --abort 与既有合并路径完全相同。res.Base 留空(空基线无地址)。
+		if !errors.Is(err, ErrMergeNoCommonHistory) || !opt.AllowUnrelated {
+			return res, err
+		}
+		emptyBase = true
 	}
 	res.Base = mb.Base
-	baseSnap, err := r.loadSnapshot(ctx, mb.Base)
-	if err != nil {
-		return res, err
+	var baseTree *object.Tree
+	if emptyBase {
+		baseTree = object.NewTree()
+	} else {
+		baseSnap, err := r.loadSnapshot(ctx, mb.Base)
+		if err != nil {
+			return res, err
+		}
+		baseTree, err = r.loadTree(ctx, baseSnap.Root)
+		if err != nil {
+			return res, err
+		}
 	}
 	oursSnap, err := r.loadSnapshot(ctx, oursHead)
 	if err != nil {
 		return res, err
 	}
 	theirsSnap, err := r.loadSnapshot(ctx, theirsHead)
-	if err != nil {
-		return res, err
-	}
-	baseTree, err := r.loadTree(ctx, baseSnap.Root)
 	if err != nil {
 		return res, err
 	}

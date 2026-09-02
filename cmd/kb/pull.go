@@ -13,6 +13,7 @@ import (
 func cmdPull(ctx context.Context, args []string) error {
 	force := false
 	merge := false
+	allowUnrelated := false
 	var remoteDsn string
 	for _, a := range args {
 		switch a {
@@ -20,12 +21,18 @@ func cmdPull(ctx context.Context, args []string) error {
 			force = true
 		case "--merge":
 			merge = true
+		case "--allow-unrelated":
+			allowUnrelated = true
 		default:
 			remoteDsn = a
 		}
 	}
 	if force && merge {
 		return errors.New("pull: --force 与 --merge 互斥,请二选一(--force 覆盖回退,--merge 三方合并)")
+	}
+	if allowUnrelated && !merge {
+		// T44 D2:空基线合并只能走三方合并路径;单独给或与 --force 同给响亮拒绝
+		return errors.New("pull: --allow-unrelated 仅与 --merge 连用(空基线三方合并;单独使用或与 --force 同给均拒绝)")
 	}
 	if remoteDsn == "" {
 		remoteDsn = os.Getenv("KB_REMOTE_DSN")
@@ -65,15 +72,20 @@ func cmdPull(ctx context.Context, args []string) error {
 		fmt.Printf("  %s -> %s\n", shortAddr(res.From), shortAddr(res.To))
 		return nil
 	}
-	// --merge:三方合并(判定矩阵见调研 §2.7;冲突建 <branch>-merge 中间态)
-	res, err := r.MergeStart(ctx, remote, projectName(), branchName(), repo.MergeOptions{})
+	// --merge:三方合并(判定矩阵见调研 §2.7;冲突建 <branch>-merge 中间态;
+	// --allow-unrelated 时无共同历史走空基线合并,T44 D2)
+	res, err := r.MergeStart(ctx, remote, projectName(), branchName(), repo.MergeOptions{AllowUnrelated: allowUnrelated})
 	if err != nil {
 		var mc *repo.ErrMergeConflicts
 		if errors.As(err, &mc) {
 			// 冲突清单(路径 + 判定类别)输出到 stdout,错误走 stderr,
 			// 退出码非零;中间态分支与 meta 键已由 MergeStart 建立
+			baseLabel := shortAddr(res.Base)
+			if res.Base == "" {
+				baseLabel = "(空基线)" // 两库无共同历史,基准为空树
+			}
 			fmt.Printf("已同步 %d 个对象(merge)\n", res.Transferred)
-			fmt.Printf("分叉:base %s  ours %s  theirs %s\n", shortAddr(res.Base), shortAddr(res.Ours), shortAddr(res.Theirs))
+			fmt.Printf("分叉:base %s  ours %s  theirs %s\n", baseLabel, shortAddr(res.Ours), shortAddr(res.Theirs))
 			fmt.Printf("自动合并 %d 条;冲突 %d 条:\n", res.AutoMerged, len(res.Conflicts))
 			for _, c := range res.Conflicts {
 				fmt.Printf("  %s  %s  base %s  ours %s  theirs %s\n", c.Path, c.Kind, shortAddr(c.Base), shortAddr(c.Ours), shortAddr(c.Theirs))
