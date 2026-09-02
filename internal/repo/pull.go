@@ -20,6 +20,12 @@ type PullResult struct {
 // ErrDiverge 表示本地与远端已分叉,需要 --force 才能覆盖。
 var ErrDiverge = errors.New("repo: 本地与远端已分叉,拒绝快进")
 
+// ErrDivergeNoCommonHistory 表示分叉且两库无共同历史(两库各自 init 即此态)。
+// T44 D2(docs/review/drill-multi-cli.md):与真分叉(ErrDiverge)文案分流——
+// 有共同祖先才指路 --merge;这里指引 --force 覆盖或 --merge --allow-unrelated
+// 做空基线合并,修复「分叉指引改用 --merge 而 --merge 又拒绝」的指引断裂。
+var ErrDivergeNoCommonHistory = errors.New("repo: 两库无共同历史,拒绝快进(--force 覆盖,或 --merge --allow-unrelated 做空基线合并)")
+
 // Pull 把远端分支的可达对象同步到本地并据祖先关系推进分支。
 // srcProject 允许从同一存储的其它项目拉取(同库时零对象传输)。
 func (r *Repo) Pull(ctx context.Context, src store.Store, srcProject, srcBranch string, force bool) (PullResult, error) {
@@ -30,6 +36,14 @@ func (r *Repo) Pull(ctx context.Context, src store.Store, srcProject, srcBranch 
 	}
 	remoteHead, err := src.BranchGet(ctx, srcProject, srcBranch)
 	if err != nil {
+		// D1(T44):远端项目存在但分支不存在(零提交)→ 视为远端无新内容,
+		// 「已是最新」空操作,与「本地空拉非空可 ff」的对称语义对齐;本地分支
+		// 也不存在(双空)同此路径。远端项目本身不存在仍响亮报错(防误配静默)。
+		if errors.Is(err, store.ErrBranchNotFound) {
+			if _, perr := src.ProjectGet(ctx, srcProject); perr == nil {
+				return PullResult{UpToDate: true}, nil
+			}
+		}
 		return PullResult{}, fmt.Errorf("repo: 远端分支 %q: %w", srcBranch, err)
 	}
 	localHead, hasLocal, err := r.head(ctx)
@@ -64,6 +78,15 @@ func (r *Repo) Pull(ctx context.Context, src store.Store, srcProject, srcBranch 
 		return PullResult{}, err
 	}
 	if !ancestor && !force {
+		// T44 D2:分叉判定拆两类——有共同祖先的真分叉保留 ErrDiverge
+		// (CLI 追加 --merge 指引);无共同历史走新文案,指路不断裂
+		common, cerr := r.hasCommonAncestor(ctx, localHead, remoteHead)
+		if cerr != nil {
+			return res, cerr
+		}
+		if !common {
+			return res, ErrDivergeNoCommonHistory
+		}
 		return res, ErrDiverge
 	}
 	res.FastForward = ancestor
