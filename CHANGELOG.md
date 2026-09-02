@@ -3,7 +3,7 @@
 本文件记录面向用户的显著变更;格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 升级操作指引见 [docs/upgrade.md](docs/upgrade.md)。
 
-## Unreleased
+## v0.4.0 - 2026-09-02
 
 ### Added
 - 只读 HTTP API `kb serve`(M4 收尾):默认只绑 `127.0.0.1:8787`,暴露 `/healthz` 与 `/api/v1/projects|tree|note|search|log|diff`(全部 GET,错误统一 `{"error":…}` 的 400/404/405/500);无任何写端点(POST 一律 405),写路径只有 CLI;JSON 行契约抽到 `internal/view` 与 CLI `--json` 同构(`TestServeCLIParity` 逐字段钉死,`kb diff` 补 `--json`);SQLite/PostgreSQL 两后端均可 serve,SIGINT/SIGTERM 优雅退出
