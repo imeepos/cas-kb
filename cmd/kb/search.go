@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/imeepos/cas-kb/internal/repo"
+	"github.com/imeepos/cas-kb/internal/view"
 )
 
 // cmdSearch 处理 kb search:全文检索(BM25,结果确定性可复现)。
@@ -39,24 +40,8 @@ func cmdSearch(ctx context.Context, args []string) error {
 		return nil
 	}
 	if f.has("--json") {
-		type row struct {
-			Path    string   `json:"path"`
-			Slug    string   `json:"slug"`
-			Addr    string   `json:"addr"`
-			Title   string   `json:"title"`
-			Tags    []string `json:"tags"`
-			Summary string   `json:"summary"`
-			Score   float64  `json:"score"`
-		}
-		rows := make([]row, 0, len(hits))
-		for _, h := range hits {
-			tags := h.Tags
-			if tags == nil {
-				tags = []string{}
-			}
-			rows = append(rows, row{Path: h.Path, Slug: h.Slug, Addr: string(h.Addr), Title: h.Title, Tags: tags, Summary: firstSummary(h.Body), Score: h.Score})
-		}
-		return printJSON(rows)
+		// 行契约复用 internal/view,与 /api/v1/search 同构(TestServeCLIParity 钉死)
+		return printJSON(view.SearchRows(hits))
 	}
 	for _, h := range hits {
 		fmt.Printf("%.4f  %s  %s\n", h.Score, h.Path, h.Title)

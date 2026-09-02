@@ -2,7 +2,7 @@
 
 每个里程碑交付可独立验收的能力;验收标准即测试用例的来源。
 
-> 状态:M1–M3.10 已交付并通过验收(M3.10=存储后端可插拔:SQLite 默认、PostgreSQL 可选);M3.11=dir tree 全库视图(展示层增量)已交付;M4 CLI 部分已交付(倒排索引纳入快照 + kb search / link resolve / index rebuild,schema v5);M3.12=Markdown 互操作(export md / import md,增量)已交付;M4 增补=gc --keep-last K 历史保留水位(历史索引精简)已交付;HTTP API 未开工。
+> 状态:M1–M3.10 已交付并通过验收(M3.10=存储后端可插拔:SQLite 默认、PostgreSQL 可选);M3.11=dir tree 全库视图(展示层增量)已交付;M4 CLI 部分已交付(倒排索引纳入快照 + kb search / link resolve / index rebuild,schema v5);M3.12=Markdown 互操作(export md / import md,增量)已交付;M4 增补=gc --keep-last K 历史保留水位(历史索引精简)已交付;M4 收尾=只读 HTTP API(kb serve,DESIGN §8.5)已交付。
 
 ## M1 存储内核
 
@@ -150,8 +150,9 @@
 **验收标准(全部已验)**
 - 同一快照重复搜索,结果与顺序完全一致(可复现)——e2e diff 断言 + 单元测试
 - 更新一篇笔记后,只有受影响分片地址变化,其余分片结构共享——TestM4_IndexStructuralSharing
-- (若做 HTTP API)对同一快照的读写经 API 与 CLI 结果一致——**未做**,HTTP API 仍为可选项
+- (若做 HTTP API)对同一快照的读写经 API 与 CLI 结果一致——**已落地**:`kb serve` 只读 HTTP API(DESIGN §8.5;TestServeCLIParity 对 search/projects/diff 逐字段钉死 API 与 CLI --json 相等,顺序亦相等;e2e serve 段后台起服务 + curl 断言 healthz/note/search/POST 405 + 优雅退出)
 
 **验收命令**
 - `go test ./internal/index/ ./internal/repo/ -run "TestM4|TestSearch"`
-- `./scripts/e2e.sh`(含 M4 段:命中/确定性/--json/--at/rebuild/fsck)
+- `go test ./internal/server/ ./cmd/kb/ -run TestServe -v`
+- `./scripts/e2e.sh`(含 M4 段:命中/确定性/--json/--at/rebuild/fsck;含 serve 段:后台起服务、curl 断言 healthz/note/search/POST 405、kill 优雅退出)

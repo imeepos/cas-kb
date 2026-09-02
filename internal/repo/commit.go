@@ -14,6 +14,11 @@ import (
 // ErrAmbiguousRef 表示短标识命中多个快照,无法唯一解析。
 var ErrAmbiguousRef = errors.New("repo: 短标识匹配多个快照,请提供更长前缀")
 
+// ErrEntryTypeConflict 表示路径段类型冲突:期望目录/条目,实际是另一类
+// (如 "a/b" 中的 a 是条目,或按条目读取的路径其实是目录)。
+// 只读 HTTP API 用它把这类客户端路径问题映射为 400(DESIGN §8.5)。
+var ErrEntryTypeConflict = errors.New("repo: 路径段类型冲突")
+
 // translateBranchSetErr 把分支推进失败转译为可行动提示。
 // note/blob 对象在同一写路径刚写入必然存在,外键失败的现实根因
 // 几乎总是「项目未创建」(项目是分支外键的命名空间父级)。

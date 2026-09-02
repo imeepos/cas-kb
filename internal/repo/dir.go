@@ -231,6 +231,29 @@ func (r *Repo) DirTree(ctx context.Context, path string) (*DirNode, error) {
 	return r.buildNode(ctx, JoinPath(parts), name, object.EntryDir, "", dir)
 }
 
+// DirTreeAt 返回指定快照(分支名/地址/短标识;ref 省略=当前分支头)下
+// path 目录的完整层级视图。只读 HTTP API(/api/v1/tree?at=)的读取后端,
+// 与 DirTree 共用装载与排序逻辑,不重复实现;path 为空表示根目录。
+func (r *Repo) DirTreeAt(ctx context.Context, path, ref string) (*DirNode, error) {
+	parts, err := ParsePath(path)
+	if err != nil {
+		return nil, err
+	}
+	t, err := r.treeForRef(ctx, ref)
+	if err != nil {
+		return nil, err
+	}
+	dir, err := r.walkDir(ctx, t, parts)
+	if err != nil {
+		return nil, err
+	}
+	name := ""
+	if len(parts) > 0 {
+		name = parts[len(parts)-1]
+	}
+	return r.buildNode(ctx, JoinPath(parts), name, object.EntryDir, "", dir)
+}
+
 // buildNode 递归构造层级视图节点。
 func (r *Repo) buildNode(ctx context.Context, path, name string, typ object.EntryType, title string, t *object.Tree) (*DirNode, error) {
 	node := &DirNode{Path: path, Name: name, Type: typ, Title: title}

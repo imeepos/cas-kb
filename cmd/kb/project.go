@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/imeepos/cas-kb/internal/store"
+	"github.com/imeepos/cas-kb/internal/view"
 )
 
 // cmdProject 分发 project 子命令:管理项目命名空间(ls/create/desc)。
@@ -41,16 +42,8 @@ func projectLs(ctx context.Context, s store.Store, args []string) error {
 		return err
 	}
 	if f.has("--json") {
-		type row struct {
-			Name        string `json:"name"`
-			Description string `json:"description"`
-			Branches    int    `json:"branches"`
-		}
-		rows := make([]row, 0, len(stats))
-		for _, st := range stats {
-			rows = append(rows, row{Name: st.Project, Description: st.Description, Branches: st.Branches})
-		}
-		return printJSON(rows)
+		// 行契约复用 internal/view,与 /api/v1/projects 同构(TestServeCLIParity 钉死)
+		return printJSON(view.ProjectRows(stats))
 	}
 	for _, st := range stats {
 		fmt.Printf("%s\t%d\t%s\n", st.Project, st.Branches, descOrEmpty(st.Description))

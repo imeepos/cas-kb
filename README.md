@@ -38,6 +38,7 @@
 - **Markdown 互操作**:`kb export md <目录>` 当前分支或 `--at` 历史快照导出为镜像 .md 文件树(front-matter + 正文原文字节,已存在整批拒绝、`--force` 覆盖);`kb import md <目录>` 递归导入(title 必填、tags 逗号分隔,问题文件整批响亮拒绝,一次提交一次索引增量);roundtrip 逐字节一致,写回零变更(地址不变)
 - **暂存工作流**:`note set/rm`、`dir rm --stage` 累积到暂存分支(单条成本恒定),`kb stage` 查看清单、`kb commit` 合入、`kb commit --abort` 丢弃
 - **存储透明压缩**:SQLite 索引对象写入 gzip、读取透明解压,库体积 −60%;`KB_COMPRESS=off` 可关
+- **只读 HTTP API**(M4 收尾,DESIGN §8.5):`kb serve` 默认只绑 127.0.0.1:8787,暴露 `/healthz` 与 `/api/v1/{projects,tree,note,search,log,diff}`(全部 GET,POST 一律 405,无写端点);JSON 与 CLI `--json` 同一份契约(internal/view,TestServeCLIParity 逐字段钉死)
 
 ## 快速开始
 
@@ -95,6 +96,14 @@
 
     ./kb export md ~/notes               # 当前分支全部条目 → 镜像 .md 文件树(--at 可读历史快照)
     ./kb import md ~/notes               # 递归导入 .md 目录(front-matter:title/tags;一次提交一次索引增量)
+
+只读 HTTP API(AI/Agent 免 shell 消费;DESIGN §8.5):
+
+    ./kb serve                           # 默认 127.0.0.1:8787,只绑回环;Ctrl-C 优雅退出
+    ./kb serve --addr 127.0.0.1:9000     # 换端口;跨机消费走 SSH 端口转发或反向代理
+    curl -s localhost:8787/healthz                       # {"ok": true, "backend": "sqlite", ...}
+    curl -s 'localhost:8787/api/v1/note?path=hello'      # 单条笔记(正文 + 派生摘要)
+    curl -s 'localhost:8787/api/v1/search?q=chan&limit=5' # 检索,与 kb search --json 同构
 
 ## 开发与测试
 

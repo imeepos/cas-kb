@@ -1,0 +1,291 @@
+// Package server 实现 kb serve 的只读 HTTP API(M4 收尾,DESIGN §8.5):
+// 让 AI/Agent 免 shell 消费知识库。全部端点只读(GET),非 GET 一律 405,
+// 无任何写端点——写路径只有 CLI。JSON 行契约复用 internal/view,
+// 与 CLI --json 输出同构(cmd/kb TestServeCLIParity 钉死)。
+package server
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"net/http"
+	"strconv"
+	"strings"
+
+	"github.com/imeepos/cas-kb/internal/object"
+	"github.com/imeepos/cas-kb/internal/repo"
+	"github.com/imeepos/cas-kb/internal/store"
+	"github.com/imeepos/cas-kb/internal/view"
+)
+
+// Options 是 Server 的构造选项,字段语义与 CLI 全局环境一致。
+type Options struct {
+	// DSN 是库连接串(KB_DSN 同口径:SQLite 路径或 postgres://…),两后端都可 serve。
+	DSN string
+	// Project 是项目作用域(空串按 default)。
+	Project string
+	// Branch 是默认分支名(空串按 main)。
+	Branch string
+}
+
+// Server 持有一个已打开的仓库视图,只消费 repo/store 的读路径。
+type Server struct {
+	st      store.Store
+	r       *repo.Repo
+	backend string // sqlite | postgres
+	target  string // 展示目标(绝不含凭据)
+	project string
+}
+
+// New 打开存储并构造 Server;调用方负责 Close。
+func New(ctx context.Context, opts Options) (*Server, error) {
+	s, err := store.Open(ctx, opts.DSN)
+	if err != nil {
+		return nil, err
+	}
+	name, target := store.DescribeBackend(opts.DSN)
+	r := repo.Open(s, repo.Config{Project: opts.Project, Branch: opts.Branch})
+	return &Server{st: s, r: r, backend: name, target: target, project: r.Project()}, nil
+}
+
+// Backend 返回后端名(sqlite|postgres)与展示目标(不含凭据),供启动横幅打印。
+func (s *Server) Backend() (name, target string) { return s.backend, s.target }
+
+// Project 返回生效的项目作用域。
+func (s *Server) Project() string { return s.project }
+
+// Branch 返回默认分支名。
+func (s *Server) Branch() string { return s.r.Branch() }
+
+// Close 释放底层存储连接。
+func (s *Server) Close() error { return s.st.Close() }
+
+// Handler 返回只读路由。已知端点非 GET 一律 405;未知路径 404;错误响应一律 {"error":"…"}。
+func (s *Server) Handler() http.Handler {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/healthz", s.onlyGET(s.handleHealth))
+	mux.HandleFunc("/api/v1/projects", s.onlyGET(s.handleProjects))
+	mux.HandleFunc("/api/v1/tree", s.onlyGET(s.handleTree))
+	mux.HandleFunc("/api/v1/note", s.onlyGET(s.handleNote))
+	mux.HandleFunc("/api/v1/search", s.onlyGET(s.handleSearch))
+	mux.HandleFunc("/api/v1/log", s.onlyGET(s.handleLog))
+	mux.HandleFunc("/api/v1/diff", s.onlyGET(s.handleDiff))
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		s.writeError(w, http.StatusNotFound, fmt.Errorf("未知端点: %s %s", r.Method, r.URL.Path))
+	})
+	return mux
+}
+
+// onlyGET 把任意处理器收紧为 GET-only:写方法一律 405(只读纪律,连 POST 都不例外)。
+func (s *Server) onlyGET(h http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			w.Header().Set("Allow", "GET")
+			s.writeError(w, http.StatusMethodNotAllowed, fmt.Errorf("只读 API:仅支持 GET,收到 %s", r.Method))
+			return
+		}
+		h(w, r)
+	}
+}
+
+// handleHealth 服务 GET /healthz → {"ok":true,"backend":…,"schema_version":N,"project":…}
+func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
+	v, err := s.st.MetaGet(r.Context(), "schema_version")
+	if err != nil {
+		s.writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	n, err := strconv.Atoi(v)
+	if err != nil {
+		s.writeError(w, http.StatusInternalServerError, fmt.Errorf("schema_version %q 非数字: %w", v, err))
+		return
+	}
+	s.writeJSON(w, http.StatusOK, healthRow{OK: true, Backend: s.backend, SchemaVersion: n, Project: s.project})
+}
+
+// healthRow 是 /healthz 的契约。
+type healthRow struct {
+	OK            bool   `json:"ok"`
+	Backend       string `json:"backend"`
+	SchemaVersion int    `json:"schema_version"`
+	Project       string `json:"project"`
+}
+
+// handleProjects 服务 GET /api/v1/projects → project ls --json 同构。
+func (s *Server) handleProjects(w http.ResponseWriter, r *http.Request) {
+	stats, err := s.st.ProjectStats(r.Context())
+	if err != nil {
+		s.writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	s.writeJSON(w, http.StatusOK, view.ProjectRows(stats))
+}
+
+// treeNode 是 /api/v1/tree 的嵌套节点契约:dir 节点带 children,
+// note 节点带 addr/title。
+type treeNode struct {
+	Path     string      `json:"path"`
+	Name     string      `json:"name"`
+	Type     string      `json:"type"` // dir | note
+	Addr     string      `json:"addr,omitempty"`
+	Title    string      `json:"title,omitempty"`
+	Children []*treeNode `json:"children,omitempty"`
+}
+
+// treeNodeOf 把 repo.DirNode 递归转成 JSON 节点(顺序保持 repo 的字典序)。
+func treeNodeOf(n *repo.DirNode) *treeNode {
+	out := &treeNode{Path: n.Path, Name: n.Name, Type: string(n.Type)}
+	if n.Type == object.EntryNote {
+		out.Addr = string(n.Addr)
+		out.Title = n.Title
+		return out
+	}
+	for _, c := range n.Children {
+		out.Children = append(out.Children, treeNodeOf(c))
+	}
+	return out
+}
+
+// handleTree 服务 GET /api/v1/tree?at=<短标识|分支名> → 当前项目树(JSON 嵌套;
+// at 省略=分支头)。
+func (s *Server) handleTree(w http.ResponseWriter, r *http.Request) {
+	root, err := s.r.DirTreeAt(r.Context(), "", r.URL.Query().Get("at"))
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	s.writeJSON(w, http.StatusOK, treeNodeOf(root))
+}
+
+// handleNote 服务 GET /api/v1/note?path=<全路径>&at= → 单条笔记;不存在 404。
+func (s *Server) handleNote(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	path := q.Get("path")
+	if strings.TrimSpace(path) == "" {
+		s.writeError(w, http.StatusBadRequest, errors.New("缺少必填参数 path(条目全路径)"))
+		return
+	}
+	// 先行格式校验:空段/保留段等路径问题 → 400,与「目标不存在 → 404」区分清晰
+	if _, err := repo.ParsePath(path); err != nil {
+		s.writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	at := q.Get("at")
+	var ref *repo.NoteRef
+	var err error
+	if at == "" {
+		ref, err = s.r.Note(r.Context(), path)
+	} else {
+		ref, err = s.r.NoteAt(r.Context(), path, at)
+	}
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	s.writeJSON(w, http.StatusOK, view.NoteRowOf(ref))
+}
+
+// handleSearch 服务 GET /api/v1/search?q=<查询>&at=&limit= → search --json 同构;
+// 行序即检索的确定性排序,limit 只截断不重排。
+func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	query := q.Get("q")
+	if strings.TrimSpace(query) == "" {
+		s.writeError(w, http.StatusBadRequest, errors.New("缺少必填参数 q(查询词)"))
+		return
+	}
+	limit, err := parseLimit(q.Get("limit"))
+	if err != nil {
+		s.writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	hits, err := s.r.Search(r.Context(), query, q.Get("at"))
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	rows := view.SearchRows(hits)
+	if limit > 0 && limit < len(rows) {
+		rows = rows[:limit]
+	}
+	s.writeJSON(w, http.StatusOK, rows)
+}
+
+// handleLog 服务 GET /api/v1/log?limit= → 快照链(最新在前),
+// 字段与 kb log 展示列对齐(短标识/时间/消息/父快照)。
+func (s *Server) handleLog(w http.ResponseWriter, r *http.Request) {
+	limit, err := parseLimit(r.URL.Query().Get("limit"))
+	if err != nil {
+		s.writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	entries, err := s.r.Log(r.Context())
+	if err != nil {
+		s.writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	s.writeJSON(w, http.StatusOK, view.LogRows(entries, limit))
+}
+
+// handleDiff 服务 GET /api/v1/diff?from=<短标识|分支名>&to= → A/D/M 按全路径,
+// 与 kb diff --json 同构(共用 view.DiffRows,差异逻辑只有 repo.Diff 一份)。
+func (s *Server) handleDiff(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	from, to := q.Get("from"), q.Get("to")
+	if from == "" || to == "" {
+		s.writeError(w, http.StatusBadRequest, errors.New("缺少必填参数 from 与 to(分支名、地址或短标识)"))
+		return
+	}
+	changes, err := s.r.Diff(r.Context(), from, to)
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	s.writeJSON(w, http.StatusOK, view.DiffRows(changes))
+}
+
+// parseLimit 解析 limit 参数:空串=不限制;必须正整数。
+func parseLimit(raw string) (int, error) {
+	if raw == "" {
+		return 0, nil
+	}
+	n, err := strconv.Atoi(raw)
+	if err != nil || n <= 0 {
+		return 0, fmt.Errorf("limit 需要正整数,得到 %q", raw)
+	}
+	return n, nil
+}
+
+// fail 把 repo/store 错误映射为状态码:
+// 参数层面的(短标识歧义、路径段类型冲突)→ 400;目标不存在 → 404;其余 → 500。
+func (s *Server) fail(w http.ResponseWriter, err error) {
+	switch {
+	case errors.Is(err, repo.ErrAmbiguousRef), errors.Is(err, repo.ErrEntryTypeConflict):
+		s.writeError(w, http.StatusBadRequest, err)
+	case errors.Is(err, store.ErrNotFound), errors.Is(err, store.ErrBranchNotFound), errors.Is(err, store.ErrProjectNotFound):
+		s.writeError(w, http.StatusNotFound, err)
+	default:
+		s.writeError(w, http.StatusInternalServerError, err)
+	}
+}
+
+// writeJSON 输出 JSON:与 CLI printJSON 同款设置(2 空格缩进、不转义 HTML)。
+func (s *Server) writeJSON(w http.ResponseWriter, code int, v any) {
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.WriteHeader(code)
+	enc := json.NewEncoder(w)
+	enc.SetEscapeHTML(false)
+	enc.SetIndent("", "  ")
+	_ = enc.Encode(v)
+}
+
+// writeError 输出 {"error":"…"} 与状态码。
+func (s *Server) writeError(w http.ResponseWriter, code int, err error) {
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.WriteHeader(code)
+	enc := json.NewEncoder(w)
+	enc.SetEscapeHTML(false)
+	enc.SetIndent("", "  ")
+	_ = enc.Encode(map[string]string{"error": err.Error()})
+}
