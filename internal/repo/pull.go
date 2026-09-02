@@ -36,6 +36,19 @@ func (r *Repo) Pull(ctx context.Context, src store.Store, srcProject, srcBranch 
 		res.UpToDate = true
 		return res, nil
 	}
+	if hasLocal && !force {
+		// 调研 §1.1/§2.7 矩阵修正:远端头 ∈ 本地祖先链(本地领先)时,本地已
+		// 包含远端全部内容,正确语义是「已是最新」空操作,不再要求 --force
+		// (--force 仍保持覆盖回退语义,故此修正只在无旗标路径生效)。
+		behind, err := r.isAncestor(ctx, localHead, remoteHead, true) // remote ∈ ancestors(local)
+		if err != nil {
+			return PullResult{}, err
+		}
+		if behind {
+			res.UpToDate = true
+			return res, nil
+		}
+	}
 	tx := &transfer{st: r.st, src: src, seen: map[string]bool{}}
 	if err := tx.copy(ctx, remoteHead); err != nil {
 		return PullResult{}, err
