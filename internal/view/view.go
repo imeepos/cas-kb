@@ -195,3 +195,67 @@ func DiffRows(changes []repo.Change) []DiffRow {
 	}
 	return rows
 }
+
+// MergeStateRow 是 GET /api/v1/merge-state 与 kb stage --json 的行契约
+// (调研 best-practices-adoption §1.3:单枚举 state + 派生布尔 + 事实字段)。
+// state ∈ idle|merging;idle 是轮询稳态而非错误:事实字段为 null、conflicts
+// 为空数组、两布尔 false。conflicts 逐条复用 repo.MergeConflict 的 JSON 契约
+// (path/kind/base/ours/theirs,全地址)——一份实现两个出口,由 cmd/kb 的
+// TestServeMergeStateParity 钉死逐字段相等。
+type MergeStateRow struct {
+	Project       string               `json:"project"`
+	Branch        string               `json:"branch"`
+	State         string               `json:"state"` // idle | merging
+	CanContinue   bool                 `json:"can_continue"`
+	CanAbort      bool                 `json:"can_abort"`
+	Base          *string              `json:"base"`
+	Theirs        *string              `json:"theirs"`
+	Ours          *string              `json:"ours"`
+	Conflicts     []repo.MergeConflict `json:"conflicts"`
+	ConflictCount int                  `json:"conflict_count"`
+	MergedBranch  *string              `json:"merged_branch"` // 中间态分支名 <branch>-merge
+}
+
+// conflictsOrEmpty 把 nil 冲突清单归一为空数组,保证 JSON 输出是 [] 而非 null。
+func conflictsOrEmpty(cs []repo.MergeConflict) []repo.MergeConflict {
+	if cs == nil {
+		return []repo.MergeConflict{}
+	}
+	return cs
+}
+
+// addrPtr 把地址转为指针(事实字段 idle 时为 null,合并态始终有值;空基线
+// 冷启动的 base 为空串亦如实输出,与 meta 键存储一致)。
+func addrPtr(a hash.Address) *string {
+	s := string(a)
+	return &s
+}
+
+// MergeStateRowOf 构造合并状态行;st 为 nil 表示无合并中态(idle 稳态)。
+// project/branch 为生效作用域(回显);merged_branch 按中间态分支命名规则
+// (<branch>-merge)派生。合并态事实字段取 repo.MergeState(meta 键)原值,
+// 派生布尔由 state 唯一决定(「能否收束」由冲突清单与冻结纪律完备决定)。
+func MergeStateRowOf(project, branch string, st *repo.MergeState) MergeStateRow {
+	if st == nil {
+		return MergeStateRow{
+			Project:   project,
+			Branch:    branch,
+			State:     "idle",
+			Conflicts: []repo.MergeConflict{},
+		}
+	}
+	merged := branch + "-merge"
+	return MergeStateRow{
+		Project:       project,
+		Branch:        branch,
+		State:         "merging",
+		CanContinue:   true,
+		CanAbort:      true,
+		Base:          addrPtr(st.Base),
+		Theirs:        addrPtr(st.Theirs),
+		Ours:          addrPtr(st.Ours),
+		Conflicts:     conflictsOrEmpty(st.Conflicts),
+		ConflictCount: len(st.Conflicts),
+		MergedBranch:  &merged,
+	}
+}
