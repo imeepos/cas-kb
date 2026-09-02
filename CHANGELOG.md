@@ -3,7 +3,7 @@
 本文件记录面向用户的显著变更;格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 升级操作指引见 [docs/upgrade.md](docs/upgrade.md)。
 
-## Unreleased
+## v0.6.0 - 2026-09-02
 
 ### Added
 - 三方合并(M5,DESIGN §6.3):`kb pull --merge`(与 `--force` 互斥)在分叉时按最近公共祖先(LCA,沿 parents 链 BFS)做条目级三方合并——单侧变取单侧、双侧同变自动合、目录递归下钻、Merkle 地址相等整子树剪枝;不做文本行级合并。零冲突直接落库:合并快照含两个 parents(两侧历史均可达,fsck/GC/pull 传输零改动兼容),输出合并快照短标识与冲突数;有冲突全有或全无——不落提交不动指针,建 `<branch>-merge` 中间态分支与 meta 键(冲突清单存档),退出码非零并逐行输出冲突清单(路径/类别/三侧短标识,类别 ∈ content/modify-delete/type)。合并中态冻结该分支一切直接写(note/dir/bulk/reset/pull/index rebuild/普通 commit、serve 写端点),`note set/rm --stage` 升格为裁决动作(写入 -merge 视图),`kb stage` 切换为展示冲突清单与裁决进度;`kb merge --continue [-m]` 把裁决差异应用到自动合并树落双亲合并快照并清理中间态(零裁决响亮拒绝),`kb merge --abort` 删中间态回到合并前;`kb log` 合并行追加第二亲短标识。(M5-A repo 内核:LCA/判定表/剪枝/零冲突落库;M5-B:CLI/中间态/收束/冻结/e2e)
