@@ -81,6 +81,9 @@ func (r *Repo) mutateAt(ctx context.Context, root *object.Tree, dirs []string, m
 // 目录已存在时幂等返回 created=false 且不产生新快照;
 // 目标或中间段是条目时报错。空目录是合法实体(空 entries 树,父链可达)。
 func (r *Repo) Mkdir(ctx context.Context, path, msg string) (hash.Address, bool, error) {
+	if err := r.rejectIfMerging(ctx, "dir add"); err != nil {
+		return "", false, err
+	}
 	parts, err := ParsePath(path)
 	if err != nil {
 		return "", false, err
@@ -137,6 +140,9 @@ func (r *Repo) dirExists(ctx context.Context, t *object.Tree, parts []string) (b
 // RemoveDir 删除目录。recursive=false 时仅允许删除空目录;
 // recursive=true 删除整棵子树(含其中全部条目,对象留给 GC 清扫)。
 func (r *Repo) RemoveDir(ctx context.Context, path, msg string, recursive bool) (hash.Address, error) {
+	if err := r.rejectIfMerging(ctx, "dir rm"); err != nil {
+		return "", err
+	}
 	parts, err := ParsePath(path)
 	if err != nil {
 		return "", err

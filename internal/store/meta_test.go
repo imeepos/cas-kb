@@ -36,3 +36,32 @@ func TestMetaGetSet(t *testing.T) {
 		t.Fatalf("schema_version 应可读: %q %v", v, err)
 	}
 }
+
+// MetaDelete:删除 meta 键(合并中间态等机制清理用);幂等,缺键等价空操作。
+func TestMetaDelete(t *testing.T) {
+	ctx := context.Background()
+	st, err := Open(ctx, testdb.NewSQLite(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	if err := st.MetaDelete(ctx, "merge.default.main"); err != nil {
+		t.Fatalf("删除缺失键应幂等成功: %v", err)
+	}
+	if err := st.MetaSet(ctx, "merge.default.main", "{}"); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.MetaDelete(ctx, "merge.default.main"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.MetaGet(ctx, "merge.default.main"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("删除后应 ErrNotFound: %v", err)
+	}
+	if err := st.MetaDelete(ctx, "merge.default.main"); err != nil {
+		t.Fatalf("重复删除应幂等: %v", err)
+	}
+	// 其余键不受影响
+	if v, err := st.MetaGet(ctx, "schema_version"); err != nil || v == "" {
+		t.Fatalf("schema_version 应可读: %q %v", v, err)
+	}
+}

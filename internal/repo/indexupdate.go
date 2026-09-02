@@ -99,6 +99,10 @@ func (r *Repo) fullIndex(ctx context.Context, leaves map[string]hash.Address) (h
 // RebuildIndex 从当前头快照全量重建检索索引并落一个新快照。
 // tree 内容不变(结构共享),仅快照头与索引对象为新增;无头时等价首次建库。
 func (r *Repo) RebuildIndex(ctx context.Context, msg string) (hash.Address, hash.Address, error) {
+	// 冻结纪律:index rebuild 会推进分支指针(落新快照),合并中态拒绝
+	if err := r.rejectIfMerging(ctx, "index rebuild"); err != nil {
+		return "", "", err
+	}
 	t, hasHead, err := r.currentTree(ctx)
 	if err != nil {
 		return "", "", err

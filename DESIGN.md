@@ -163,6 +163,7 @@ cas-kb/
 | Has / Delete / List | Has 供遍历跳过;Delete 仅 GC 使用;List 供 GC/FSCK 全量扫描 |
 | ProjectCreate(name, description) / ProjectStats / ProjectDescribe | 建项目幂等(已存在等价空操作,可带描述);Stats 返回名称/描述/分支数;Describe 就地更新描述,不产生快照 |
 | BranchGet / BranchSet / BranchDelete / BranchList / BranchDescribe | 均按项目作用域(repo 层注入项目);BranchSet 是快照推进的唯一写路径,UPSERT 仅更新 addr/updated_at(**不覆盖 description**),目标对象不存在时报错(FK 兜底);BranchDescribe 就地更新分支描述;BranchList 返回的 BranchRef 含描述 |
+| MetaGet / MetaSet / MetaDelete | 库级 KV(meta 表)通用读写删;Get/Delete 键不存在返回 NotFound,Delete 幂等;供 gc 保留水位与合并中间态等机制状态使用,schema_version 等系统键不经过本接口 |
 | Wipe | 清空全部业务数据(TRUNCATE 四表)并重跑 schema.sql 播种,等价全新初始化的库;仅供 kb wipe,调用方自负破坏性语义 |
 | Close | 释放连接 |
 
@@ -196,15 +197,17 @@ cas-kb/
 
 1. 读取远端分支头;与本地头相同 → 结束(O(1))
 2. 以「本地优先」加载器遍历远端可达对象:本地已有 → 直接用于解码继续下钻;本地没有 → 从远端取回并落库(计数)
-3. 祖先检查:本地头 ∈ 远端头祖先链 → fast-forward 推进分支;否则报告分叉(强制覆盖需显式 `--force`)
+3. 祖先检查(判定矩阵,M5 修正「本地领先」误报):本地头 = 远端头 → 已更新;本地头 ∈ 远端头祖先链 → fast-forward 推进;远端头 ∈ 本地头祖先链 → 已更新空操作;互不为祖先 → 默认拒绝分叉(提示 `--force` 覆盖或 `--merge` 三方合并),显式 `--force` 覆盖回退,`--merge` 走 §6.3(与 `--force` 互斥)
 
 通信量 = 差异对象数 + 路径长度,与库总量无关——百万条笔记改一条,流量约等于一条。
 
-### 6.3 合并(演进项,本期未实现)
+### 6.3 三方合并(pull --merge,M5 已交付)
 
-- 共同祖先 = 快照 DAG 的最近公共祖先
-- tree 级 3-way:双方地址相同 = 未改;单方改 = 取改方;双方改且不同 = 冲突,升级到条目级人工裁决
-- 合并结果 = 新快照(parents = [本地头, 远端头]),历史无损
+- **入口与基准**:`kb pull --merge`(与 `--force` 互斥;完整调研见 docs/research/merge-design.md)。基准 = 两分支头在快照 DAG 上的最近公共祖先(沿 parents 链 BFS,不信任 Time;无共同祖先响亮拒绝,检出多个候选拒绝并支持显式指定)
+- **条目级三方判定**:按全路径逐 slug 比较 (type, addr) 三元组——单侧变取单侧、双侧同变(同地址)自动合、双侧异变登记冲突;目录递归下钻,Merkle 地址相等即整棵子树剪枝;**不做文本行级合并**(冲突交人工/上层 Agent 裁决,三侧正文经 `note get --at`/`diff` 可读)
+- **冲突即全有或全无**:不落正式提交、不动原分支指针,改建显式中间态——`<branch>-merge` 中间态分支(基线快照:树 = 自动合并树,冲突条目取 ours 占位,Message = "merge base",不建索引)+ meta 键 `merge.<项目>.<分支>`(单键 JSON:base/theirs/ours 地址与冲突清单);退出码非零并输出冲突清单(path/kind/base/ours/theirs,kind ∈ content/modify-delete/type)
+- **冻结纪律与裁决**:中间态存在期间该分支一切直接写(note set/rm、dir add/rm、bulk import、reset、pull、index rebuild、普通 stage/commit、serve 写端点)响亮拒绝,提示先收束;读操作不受限;`--stage` 升格为裁决动作写入 -merge 视图,`kb stage` 切换为展示裁决清单
+- **收束**:`kb merge --continue [-m]` 把「基线 ↔ -merge 头」裁决差异应用到自动合并树 → 索引一次批量增量 → 合并快照(parents = [ours, theirs],历史双侧可达,fsck/GC/pull 传输零改动兼容)→ 推进分支并清理中间态;零裁决拒绝(冲突条目静默保持 ours 占位等于丢 theirs 变更);`kb merge --abort` 删中间态分支与 meta 键回到合并前(孤儿交 GC)。`kb log` 合并行追加第二亲短标识。边界:合并进行中不保证 backup 携带中间态(meta 不在备份载荷);merge --continue 前重打的清单见 `kb stage`/`kb merge`
 
 ### 6.4 GC(标记-清扫)
 

@@ -6,7 +6,11 @@
 ## Unreleased
 
 ### Added
+- 三方合并(M5,DESIGN §6.3):`kb pull --merge`(与 `--force` 互斥)在分叉时按最近公共祖先(LCA,沿 parents 链 BFS)做条目级三方合并——单侧变取单侧、双侧同变自动合、目录递归下钻、Merkle 地址相等整子树剪枝;不做文本行级合并。零冲突直接落库:合并快照含两个 parents(两侧历史均可达,fsck/GC/pull 传输零改动兼容),输出合并快照短标识与冲突数;有冲突全有或全无——不落提交不动指针,建 `<branch>-merge` 中间态分支与 meta 键(冲突清单存档),退出码非零并逐行输出冲突清单(路径/类别/三侧短标识,类别 ∈ content/modify-delete/type)。合并中态冻结该分支一切直接写(note/dir/bulk/reset/pull/index rebuild/普通 commit、serve 写端点),`note set/rm --stage` 升格为裁决动作(写入 -merge 视图),`kb stage` 切换为展示冲突清单与裁决进度;`kb merge --continue [-m]` 把裁决差异应用到自动合并树落双亲合并快照并清理中间态(零裁决响亮拒绝),`kb merge --abort` 删中间态回到合并前;`kb log` 合并行追加第二亲短标识。(M5-A repo 内核:LCA/判定表/剪枝/零冲突落库;M5-B:CLI/中间态/收束/冻结/e2e)
 - 检索片段高亮(M4.2,纯展示层增量,DESIGN §7.1):`kb search --snippet` 文本模式在每条命中行下追加缩进片段、命中词元以【】包裹;`kb search --json --snippet` 与 `GET /api/v1/search?snippet=1` 增可选字段 `"snippet"`(缺省不带,旧消费者零破坏);确定性窗口算法(任一查询词元首次出现为中心,目标 80 字符,截断边缘吸附标点/空白,按 rune 切不劈多字节字符;CJK 2-gram 标记扩展回完整词源,英文按词边界);评分/排序/命中集合零变化
+
+### Changed
+- `kb pull` 判定矩阵修正:远端头 ∈ 本地祖先链(本地领先)时由「分叉拒绝」改为「已是最新」空操作(与 git 语义对齐);无旗标分叉拒绝的提示文案追加 `kb pull --merge` 三方合并指引;`--force` 覆盖回退语义不变
 
 ## v0.5.0 - 2026-09-02
 

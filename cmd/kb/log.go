@@ -24,6 +24,11 @@ func cmdLog(ctx context.Context, args []string) error {
 		parent := "none"
 		if len(e.Snapshot.Parents) > 0 {
 			parent = shortAddr(e.Snapshot.Parents[0])
+			// 合并快照(M5)含两个 parents:追加第二亲短标识,
+			// 与既有行格式兼容(first-parent 链不变)
+			if len(e.Snapshot.Parents) > 1 {
+				parent += "," + shortAddr(e.Snapshot.Parents[1])
+			}
 		}
 		msg := e.Snapshot.Message
 		if msg == "" {

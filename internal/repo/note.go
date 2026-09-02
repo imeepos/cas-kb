@@ -38,6 +38,9 @@ func (r *Repo) SetNote(ctx context.Context, path string, in NoteInput, msg strin
 	if in.Title == "" {
 		return "", "", errors.New("repo: 条目标题不能为空")
 	}
+	if err := r.rejectIfMerging(ctx, "note set"); err != nil {
+		return "", "", err
+	}
 	dirs, slug, err := SplitNotePath(path)
 	if err != nil {
 		return "", "", err
@@ -84,6 +87,9 @@ func (r *Repo) SetNote(ctx context.Context, path string, in NoteInput, msg strin
 
 // RemoveNote 删除一条条目并推进分支。路径不存在或指向目录时报错。
 func (r *Repo) RemoveNote(ctx context.Context, path, msg string) (hash.Address, error) {
+	if err := r.rejectIfMerging(ctx, "note rm"); err != nil {
+		return "", err
+	}
 	dirs, slug, err := SplitNotePath(path)
 	if err != nil {
 		return "", err

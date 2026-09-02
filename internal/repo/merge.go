@@ -426,6 +426,11 @@ type MergeResult struct {
 	Root        hash.Address    // 零冲突:合并树根地址
 	AutoMerged  int             // 自动合并条目数(判定表行 2/3/4)
 	Conflicts   []MergeConflict // 冲突清单(按路径字典序)
+
+	// mergedNode 是冲突时未落库的合成树内存表示(B 批次中间态落基线快照用;
+	// 内核冲突即停、不落任何对象与指针,此字段仅供同包 mergestate.go 消费,
+	// 零冲突与外部调用方不感知)。
+	mergedNode *mergeNode
 }
 
 // Merge 把远端分支合并进当前分支:远端可达对象先传输(只取本地缺失),
@@ -434,6 +439,9 @@ type MergeResult struct {
 // Parents=[ours, theirs],两条 parent 链都保持可达),非空则全有或全无返回
 // *ErrMergeConflicts。合并仅限同项目(v1 口径)。
 func (r *Repo) Merge(ctx context.Context, src store.Store, srcProject, srcBranch string, opt MergeOptions) (MergeResult, error) {
+	if err := r.rejectIfMerging(ctx, "merge"); err != nil {
+		return MergeResult{}, err
+	}
 	theirsHead, err := src.BranchGet(ctx, srcProject, srcBranch)
 	if err != nil {
 		return MergeResult{}, fmt.Errorf("repo: 远端分支 %q: %w", srcBranch, err)
@@ -521,6 +529,7 @@ func (r *Repo) Merge(ctx context.Context, src store.Store, srcProject, srcBranch
 	if len(out.conflicts) > 0 {
 		sort.Slice(out.conflicts, func(i, j int) bool { return out.conflicts[i].Path < out.conflicts[j].Path })
 		res.Conflicts = out.conflicts
+		res.mergedNode = node // 未落库的合成树,B 批次中间态落基线用
 		return res, &ErrMergeConflicts{Conflicts: out.conflicts}
 	}
 	rootAddr, rootTree, err := r.writeMerged(ctx, node)

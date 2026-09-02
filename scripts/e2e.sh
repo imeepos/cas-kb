@@ -42,7 +42,7 @@ else
 fi
 cd "$WORK"
 step() { echo "--- $1"; }
-has() { echo "$2" | grep -qF "$1" || { echo "断言失败: 期望包含 [$1],实际: $2"; exit 1; }; }
+has() { echo "$2" | grep -qF -e "$1" || { echo "断言失败: 期望包含 [$1],实际: $2"; exit 1; }; }
 
 step "version";              has "kb " "$($KB version)"
 step "init";                 $KB init > /dev/null
@@ -229,6 +229,62 @@ done
 step "write 无令牌 POST 403";  code=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H 'Content-Type: application/json' -d '{"path":"api/n2","title":"T","body":"b"}' "$R_URL/api/v1/note"); [ "$code" = "403" ] || { echo "断言失败: 无令牌 POST 应 403,得到 $code"; exit 1; }
 step "write 无令牌 DELETE 403"; code=$(curl -s -o /dev/null -w '%{http_code}' -X DELETE "$R_URL/api/v1/note?path=task"); [ "$code" = "403" ] || { echo "断言失败: 无令牌 DELETE 应 403,得到 $code"; exit 1; }
 step "kill serve(ro)";        kill "$RPID"; wait "$RPID" || { echo "断言失败: serve(ro) 应优雅退出: $(cat "$RLOG")"; exit 1; }
+
+# ---- M5 三方合并(pull --merge:两库互写、冲突中间态、收束/放弃)----
+MDIR="$WORK/merge"; mkdir -p "$MDIR"
+run_a() { KB_DSN="sqlite:$MDIR/a.db" "$KB" "$@"; }
+run_b() { KB_DSN="sqlite:$MDIR/b.db" "$KB" "$@"; }
+step "merge 两库 init";        run_a init > /dev/null; run_b init > /dev/null
+run_a -p alpha project create alpha > /dev/null; run_b -p alpha project create alpha > /dev/null
+step "merge 共同基点(互 pull 拉平)"; run_a -p alpha note set task --title T --body v1 -m base > /dev/null
+out=$(run_b -p alpha pull "sqlite:$MDIR/a.db"); has "已同步" "$out"; has "v1" "$(run_b -p alpha note get task)"
+step "merge 零冲突(不同路径分叉)一步落库"
+run_a -p alpha note set x --title X --body ax -m ax > /dev/null
+run_b -p alpha note set y --title Y --body by -m by > /dev/null
+out=$(run_a -p alpha pull "sqlite:$MDIR/b.db" --merge); has "冲突 0 条" "$out"; has "合并快照 sha256:" "$out"
+BHEAD=$(run_b -p alpha log | head -1 | awk '{print $1}')
+PARENTS=$(run_a -p alpha log | head -1 | grep -oE 'parent=[^ ]+')
+echo "$PARENTS" | grep -qF "$BHEAD" || { echo "断言失败: 合并快照双亲应含 theirs 头 $BHEAD: $PARENTS"; exit 1; }
+echo "$PARENTS" | grep -q "," || { echo "断言失败: 合并快照应显示两个 parents: $PARENTS"; exit 1; }
+has "完整,无问题" "$(run_a fsck)"
+has "y" "$(run_a -p alpha search by | head -1)"
+step "merge 制造冲突(同路径双侧异改)"
+run_a -p alpha note set task --title T --body va -m va > /dev/null
+run_b -p alpha note set task --title T --body vb -m vb > /dev/null
+AHEAD=$(run_a -p alpha log | head -1 | awk '{print $1}')
+step "pull 无旗标分叉拒绝(文案追加 --merge 指引)"
+if out=$(run_a -p alpha pull "sqlite:$MDIR/b.db" 2>&1); then echo "断言失败: 无旗标分叉应拒绝"; exit 1; else has "已分叉" "$out"; has "kb pull --merge" "$out"; fi
+step "pull --merge 冲突 → 中间态,退出码非零"
+if out=$(run_a -p alpha pull "sqlite:$MDIR/b.db" --merge 2>&1); then echo "断言失败: 冲突应退出码非零"; exit 1; else
+  has "冲突 1 条" "$out"; has "task" "$out"; has "content" "$out"; has "main-merge" "$out"; has "--stage" "$out"
+fi
+step "merge 原分支指针不动,ours 内容保持"
+[ "$(run_a -p alpha log | head -1 | awk '{print $1}')" = "$AHEAD" ] || { echo "断言失败: 冲突不应推进原分支"; exit 1; }
+has "va" "$(run_a -p alpha note get task)"
+step "merge 中间态冻结直接写路径"
+if out=$(run_a -p alpha note set task --title T --body zz -m z 2>&1); then echo "断言失败: 冻结应拒绝直接写"; exit 1; else has "未完成合并" "$out"; fi
+if out=$(run_a -p alpha pull "sqlite:$MDIR/b.db" 2>&1); then echo "断言失败: 冻结应拒绝 pull"; exit 1; else has "未完成合并" "$out"; fi
+step "merge --abort 清理中间态"
+out=$(run_a -p alpha merge --abort); has "已放弃合并" "$out"
+if run_a -p alpha branch ls | grep -qF "main-merge"; then echo "断言失败: abort 后不应有 main-merge"; exit 1; fi
+[ "$(run_a -p alpha log | head -1 | awk '{print $1}')" = "$AHEAD" ] || { echo "断言失败: abort 后应回到合并前"; exit 1; }
+step "merge --continue 闭环(冲突侧修正后成功)"
+if out=$(run_a -p alpha pull "sqlite:$MDIR/b.db" --merge 2>&1); then echo "断言失败: 应再次冲突"; exit 1; else has "冲突 1 条" "$out"; fi
+out=$(run_a -p alpha stage); has "存在未完成合并" "$out"; has "未裁决" "$out"
+run_a -p alpha note set task --title T --body "resolved 稿" --stage -m 采用合并稿 > /dev/null
+out=$(run_a -p alpha stage); has "已裁决" "$out"
+out=$(run_a -p alpha merge --continue -m "merge theirs:task 裁决"); has "合并完成" "$out"; has "1 条裁决" "$out"
+PARENTS=$(run_a -p alpha log | head -1 | grep -oE 'parent=[^ ]+')
+echo "$PARENTS" | grep -q "," || { echo "断言失败: 收束快照应双亲: $PARENTS"; exit 1; }
+has "resolved 稿" "$(run_a -p alpha note get task)"
+has "task" "$(run_a -p alpha search resolved | head -1)"
+has "完整,无问题" "$(run_a fsck)"
+if run_a -p alpha branch ls | grep -qF "main-merge"; then echo "断言失败: 收束后不应有 main-merge"; exit 1; fi
+step "merge 收束后无中间态"
+if out=$(run_a -p alpha merge --continue 2>&1); then echo "断言失败: 无中间态应报错"; exit 1; else has "没有进行中的合并" "$out"; fi
+step "pull --force 与 --merge 互斥"
+if out=$(run_a -p alpha pull "sqlite:$MDIR/b.db" --force --merge 2>&1); then echo "断言失败: 互斥应报错"; exit 1; else has "互斥" "$out"; fi
+rm -rf "$MDIR"
 
 step "gc + fsck";            out=$($KB gc); has "已备份" "$out"; has "完整,无问题" "$($KB fsck)"
 echo "E2E_GREEN"
