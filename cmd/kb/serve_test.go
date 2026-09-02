@@ -137,6 +137,14 @@ func TestServeCLIParity(t *testing.T) {
 	cliJSON(t, func() error { return cmdSearch(ctx, []string{"语义", "-n", "1", "--json"}) }, &cliRows)
 	assertSearchParity(t, "search limit", apiRows, cliRows)
 
+	// 片段高亮 parity(--snippet ↔ snippet=1,M4.2):含 snippet 字段逐字段相等
+	apiGetJSON(t, base+"/api/v1/search?q=chan+%E8%AF%AD%E4%B9%89&snippet=1", &apiRows)
+	cliJSON(t, func() error { return cmdSearch(ctx, []string{"chan", "语义", "--json", "--snippet"}) }, &cliRows)
+	assertSearchParity(t, "search snippet parity", apiRows, cliRows)
+	if len(apiRows) == 0 || !strings.Contains(apiRows[0].Snippet, "【") {
+		t.Fatalf("snippet=1 应附带含标记的片段: %+v", apiRows)
+	}
+
 	// ---- projects:逐字段相等 ----
 	var apiProjects, cliProjects []view.ProjectRow
 	apiGetJSON(t, base+"/api/v1/projects", &apiProjects)
@@ -192,6 +200,9 @@ func assertSearchParity(t *testing.T, name string, api, cli []view.SearchRow) {
 		}
 		if a.Summary != c.Summary {
 			t.Errorf("%s: 第 %d 行 summary 不等: API %q vs CLI %q", name, i, a.Summary, c.Summary)
+		}
+		if a.Snippet != c.Snippet {
+			t.Errorf("%s: 第 %d 行 snippet 不等: API %q vs CLI %q", name, i, a.Snippet, c.Snippet)
 		}
 		if a.Score != c.Score {
 			t.Errorf("%s: 第 %d 行 score 不等: API %v vs CLI %v", name, i, a.Score, c.Score)

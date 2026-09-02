@@ -10,7 +10,9 @@ import (
 )
 
 // cmdSearch 处理 kb search:全文检索(BM25,结果确定性可复现)。
-// 用法:kb search <query...> [--at 快照] [-n N] [--json]
+// 用法:kb search <query...> [--at 快照] [-n N] [--json] [--snippet]
+// --snippet 为纯展示层增量(M4.2):命中行下追加缩进片段(--json 时输出
+// 可选字段 snippet),评分/排序/命中集合零变化(DESIGN §7.1)。
 func cmdSearch(ctx context.Context, args []string) error {
 	f, err := parseFlags(args, map[string]bool{"--at": true, "-n": true})
 	if err != nil {
@@ -40,11 +42,20 @@ func cmdSearch(ctx context.Context, args []string) error {
 		return nil
 	}
 	if f.has("--json") {
-		// 行契约复用 internal/view,与 /api/v1/search 同构(TestServeCLIParity 钉死)
+		// 行契约复用 internal/view,与 /api/v1/search 同构(TestServeCLIParity 钉死);
+		// snippet 字段仅在 --snippet 时存在(omitempty,旧消费者零破坏)
+		if f.has("--snippet") {
+			return printJSON(view.SearchRowsWithSnippet(hits, query))
+		}
 		return printJSON(view.SearchRows(hits))
 	}
 	for _, h := range hits {
 		fmt.Printf("%.4f  %s  %s\n", h.Score, h.Path, h.Title)
+		if f.has("--snippet") {
+			if snip := view.Snippet(h.Body, query); snip != "" {
+				fmt.Printf("    %s\n", snip)
+			}
+		}
 	}
 	return nil
 }

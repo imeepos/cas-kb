@@ -110,6 +110,12 @@ step "search 确定性(可复现)"; diff <($KB -p alpha search BM25) <($KB -p al
 step "search --json 契约";   jout=$($KB -p alpha search BM25 --json); has '"path": "go/searching/index"' "$jout"
 step "search --at 历史快照";  has "(no results)" "$($KB -p alpha search BM25 --at "$S1")"
 step "search 无命中";        has "(no results)" "$($KB -p alpha search 绝无仅有词q)"
+# ---- M4.2 片段高亮(纯展示层增量;DESIGN §7.1)----
+step "search --snippet 文本";  out=$($KB -p alpha search BM25 --snippet); has "【BM25】" "$out"
+step "snippet 行有缩进";        echo "$out" | grep -q '^    ' || { echo "断言失败: 片段行应有 4 空格缩进: $out"; exit 1; }
+step "search --snippet 排序不变"; diff <($KB -p alpha search BM25) <($KB -p alpha search BM25 --snippet | grep -v '^    ') || { echo "断言失败: --snippet 不得改变结果序列"; exit 1; }
+step "search --json --snippet"; jout=$($KB -p alpha search BM25 --json --snippet); has '"snippet"' "$jout"; has '【BM25】' "$jout"
+step "search --json 缺省无 snippet"; jout=$($KB -p alpha search BM25 --json); if echo "$jout" | grep -qF '"snippet"'; then echo "断言失败: 缺省 --json 不应带 snippet 字段"; exit 1; fi
 step "link resolve 全路径";   out=$($KB -p alpha link resolve go/searching/index); has "path:  go/searching/index" "$out"
 step "link resolve 叶名回退"; out=$($KB -p alpha link resolve task); has "path:  task" "$out"
 step "index rebuild";        out=$($KB -p alpha index rebuild); has "index sha256:" "$out"
@@ -185,6 +191,8 @@ done
 step "serve healthz 探活";     has '"ok": true' "$(curl -sf "$SERVE_URL/healthz")"
 step "serve api note 读单条";  has '"title": "A1"' "$(curl -sf "$SERVE_URL/api/v1/note?path=task")"
 step "serve api search 检索";  has '"path": "hist/n12"' "$(curl -sf -G "$SERVE_URL/api/v1/search" --data-urlencode 'q=H12')"
+step "serve api search snippet"; has '"snippet": "b12"' "$(curl -sf -G "$SERVE_URL/api/v1/search" --data-urlencode 'q=H12' --data-urlencode 'snippet=1')"
+step "serve api search 缺省无 snippet"; r=$(curl -sf -G "$SERVE_URL/api/v1/search" --data-urlencode 'q=H12'); if echo "$r" | grep -qF '"snippet"'; then echo "断言失败: 缺省不应带 snippet 字段"; exit 1; fi
 step "serve 只读纪律 POST 403"; code=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$SERVE_URL/api/v1/note"); [ "$code" = "403" ] || { echo "断言失败: 未配置令牌 POST 应 403,得到 $code"; exit 1; }
 step "serve 只读模式文案";     rmsg=$(curl -s -X POST "$SERVE_URL/api/v1/note"); has "服务未配置写入令牌" "$rmsg"
 step "kill serve 优雅退出";    kill "$SERVE_PID"; wait "$SERVE_PID" || { echo "断言失败: serve 应优雅退出(退出码 0): $(cat "$SERVE_LOG")"; exit 1; }

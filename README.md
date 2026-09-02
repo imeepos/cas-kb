@@ -33,7 +33,7 @@
 - **M3.9 库级运维**:`kb backup|restore`(原生 .ckb,跨后端可移植、逐对象哈希校验、非空恢复需 `--force`)、`kb wipe --force`(重置为全新库)
 - **M3.10 双后端**:默认 SQLite 文件库(零外部依赖);`KB_DSN=postgres://…` 切换 PostgreSQL;两后端同一套测试与 e2e 全绿,.ckb 备份可跨后端迁移
 - **M3.11 dir tree 全库视图**:不带 `-p` 时渲染全库树(项目为顶层节点,逐项目挂默认分支树)
-- **M4 CLI 检索**(schema v5):BM25 全文检索 `kb search`(字段加权 标题3/标签2/正文1,结果确定性可复现,`--at` 历史快照检索);倒排索引纳入快照(indexroot/indexshard,结构共享式增量);`kb index rebuild` 全量重建;`kb link resolve` 链接解析
+- **M4 CLI 检索**(schema v5):BM25 全文检索 `kb search`(字段加权 标题3/标签2/正文1,结果确定性可复现,`--at` 历史快照检索);`--snippet` 附命中片段(M4.2 展示层增量,命中词元以【】包裹,评分/排序零变化);倒排索引纳入快照(indexroot/indexshard,结构共享式增量);`kb index rebuild` 全量重建;`kb link resolve` 链接解析
 - **批量导入**:`kb bulk import <jsonl>` N 条笔记一次提交 + 一次索引增量(2000 条由逐条 103s/6.7GB 降至 350ms/11MB)
 - **Markdown 互操作**:`kb export md <目录>` 当前分支或 `--at` 历史快照导出为镜像 .md 文件树(front-matter + 正文原文字节,已存在整批拒绝、`--force` 覆盖);`kb import md <目录>` 递归导入(title 必填、tags 逗号分隔,问题文件整批响亮拒绝,一次提交一次索引增量);roundtrip 逐字节一致,写回零变更(地址不变)
 - **暂存工作流**:`note set/rm`、`dir rm --stage` 累积到暂存分支(单条成本恒定),`kb stage` 查看清单、`kb commit` 合入、`kb commit --abort` 丢弃
@@ -67,6 +67,12 @@
     ./kb dir ls go                       # 直接子项(目录在前);--json 机器可读
     ./kb note ls                         # 全库递归,路径列
     ./kb note get go/concurrency/channel # 按全路径读(首行输出 path:)
+
+检索(片段便于人眼/AI 快速判断相关性;纯展示层,排序与命中集合零变化):
+
+    ./kb search chan                     # BM25 全文检索,结果确定性可复现
+    ./kb search chan --snippet           # 命中行下附缩进片段,命中词元以【】包裹
+    ./kb search 通道 --json --snippet    # 机器可读;snippet 为可选字段,缺省不带
 
 版本与变更:
 
@@ -105,6 +111,7 @@ HTTP API(AI/Agent 免 shell 消费与写入;DESIGN §8.5/§8.6):
     curl -s localhost:8787/healthz                       # {"ok": true, "backend": "sqlite", ...}
     curl -s 'localhost:8787/api/v1/note?path=hello'      # 单条笔记(正文 + 派生摘要)
     curl -s 'localhost:8787/api/v1/search?q=chan&limit=5' # 检索,与 kb search --json 同构
+    curl -s 'localhost:8787/api/v1/search?q=chan&snippet=1' # 附 snippet 片段字段(命中词元以【】包裹)
 
 写入模式(默认只读;配置令牌后启用 POST/DELETE,DESIGN §8.6):
 

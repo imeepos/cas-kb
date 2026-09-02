@@ -13,8 +13,9 @@ type Term struct {
 	Count int
 }
 
-// isCJK 报告 rune 是否属于 CJK 表意文字/假名/谚文,走 2-gram 切分。
-func isCJK(r rune) bool {
+// IsCJK 报告 rune 是否属于 CJK 表意文字/假名/谚文,走 2-gram 切分。
+// 导出供展示层(片段高亮)复用同一套字符分类,保证与索引分词同口径。
+func IsCJK(r rune) bool {
 	switch {
 	case r >= 0x3400 && r <= 0x4DBF, // CJK 扩展 A
 		r >= 0x4E00 && r <= 0x9FFF, // CJK 基本区
@@ -27,8 +28,9 @@ func isCJK(r rune) bool {
 	return false
 }
 
-// isWordChar 报告 rune 是否属于 ASCII 词元字符(字母/数字)。
-func isWordChar(r rune) bool {
+// IsWordChar 报告 rune 是否属于 ASCII 词元字符(字母/数字)。
+// 导出供展示层(片段高亮)复用同一套字符分类,保证与索引分词同口径。
+func IsWordChar(r rune) bool {
 	return (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9')
 }
 
@@ -66,10 +68,10 @@ func Tokenize(text string) []Term {
 	}
 	for _, r := range lower {
 		switch {
-		case isWordChar(r):
+		case IsWordChar(r):
 			flushCJK()
 			word = append(word, r)
-		case isCJK(r):
+		case IsCJK(r):
 			flushWord()
 			cjk = append(cjk, r)
 		default:

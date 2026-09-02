@@ -13,7 +13,7 @@ func usage() {
 		"  kb note rm <路径> [-m msg]\n" +
 		"  kb note ls [--dir 目录] [--json]   # 递归列出;JSON 含 path/标题/标签/派生摘要\n" +
 		"  kb link resolve <slug> [--at 快照] [--json]  # 解析链接 slug:全路径精确→叶名全库唯一→歧义报错\n" +
-		"  kb search <query...> [--at 快照] [-n N] [--json]  # 全文检索(BM25,结果确定性可复现)\n" +
+		"  kb search <query...> [--at 快照] [-n N] [--json] [--snippet]  # 全文检索(BM25,确定性可复现;--snippet 附命中片段)\n" +
 		"  kb bulk import <file.jsonl> [-m msg]  # 批量导入(单快照;JSONL 每行 path/title/tags/body)\n" +
 		"  kb export md <目录> [--at 快照] [--force]  # 导出当前分支(或历史快照)为镜像 .md 文件树\n" +
 		"  kb import md <目录> [-m msg]  # 递归导入 .md 目录(front-matter:title 必填,tags 逗号分隔)\n" +

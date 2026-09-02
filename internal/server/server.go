@@ -243,8 +243,10 @@ func (s *Server) handleNote(w http.ResponseWriter, r *http.Request) {
 	s.writeJSON(w, http.StatusOK, view.NoteRowOf(ref))
 }
 
-// handleSearch 服务 GET /api/v1/search?q=<查询>&at=&limit= → search --json 同构;
-// 行序即检索的确定性排序,limit 只截断不重排。
+// handleSearch 服务 GET /api/v1/search?q=<查询>&at=&limit=&snippet= →
+// search --json 同构;行序即检索的确定性排序,limit 只截断不重排。
+// snippet=1(M4.2 片段高亮)为可选展示参数:行内附带 snippet 字段(语义与
+// CLI --snippet 相同);缺省不带,契约与旧消费者零破坏(DESIGN §7.1)。
 func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	query := q.Get("q")
@@ -263,6 +265,9 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	rows := view.SearchRows(hits)
+	if q.Get("snippet") == "1" { // 仅字面 1 生效;片段是排序后附加的展示信息
+		rows = view.SearchRowsWithSnippet(hits, query)
+	}
 	if limit > 0 && limit < len(rows) {
 		rows = rows[:limit]
 	}
