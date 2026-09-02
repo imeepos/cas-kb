@@ -4,7 +4,7 @@
 > 写完的东西要立刻存档（commit）
 > 禁止直接在主分支上修改任何代码
 
-本工作区是 **cas-kb 知识库系统**:交付设计文档与 Go 实现(CLI `kb`)。ROADMAP 的 M1–M3.10 已交付(含 M3.5 项目隔离、M3.6 回退与历史读取、M3.7 AI 选用元数据/schema v3、M3.8 目录层级/schema v4:tree 条目带类型,目录可嵌套,条目按全路径定位、M3.9 库级运维命令 backup/restore/wipe、M3.10 存储后端可插拔:SQLite 默认/PostgreSQL 可选);M4(检索/HTTP API)为可选项,未开工。
+本工作区是 **cas-kb 知识库系统**:交付设计文档与 Go 实现(CLI `kb`)。ROADMAP 的 M1–M3.11 与 M4 CLI 已交付(含 M3.5 项目隔离、M3.6 回退与历史读取、M3.7 AI 选用元数据/schema v3、M3.8 目录层级/schema v4:tree 条目带类型,目录可嵌套,条目按全路径定位、M3.9 库级运维命令 backup/restore/wipe、M3.10 存储后端可插拔:SQLite 默认/PostgreSQL 可选、M3.11 dir tree 全库视图、M4 CLI 检索/schema v5:`kb search`、倒排索引纳入快照、`kb index rebuild`、`kb link resolve`;另已交付 bulk 批量导入、暂存工作流、SQLite 索引对象透明压缩);HTTP API 为 M4 可选项,未开工。
 
 ## 既定事实
 
