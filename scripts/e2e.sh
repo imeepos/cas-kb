@@ -324,4 +324,11 @@ rm -rf "$CDIR"
 
 
 step "gc + fsck";            out=$($KB gc); has "已备份" "$out"; has "完整,无问题" "$($KB fsck)"
+
+# ---- T49 健康自检(kb doctor,DESIGN §8.7):两条硬断言 = 健康库 ok / 坏 DSN fail ----
+step "doctor 健康库 6 ok 退出 0"; out=$($KB doctor); has "doctor: 6 ok, 0 warn, 0 fail" "$out"
+step "doctor --list-checks 列举"; lcout=$($KB doctor -l); has "storage" "$lcout"; has "fsck" "$lcout"; has "gc-protect" "$lcout"; has "serve" "$lcout"
+step "doctor --json 契约";        jout=$($KB doctor --json); has '"check": "storage"' "$jout"; has '"status": "ok"' "$jout"; has '"detail"' "$jout"
+step "doctor --check 单项";       cout=$($KB doctor --check version); has "kb " "$cout"; has "doctor: 1 ok, 0 warn, 0 fail" "$cout"
+step "doctor 坏 DSN 退出码 1";    if out=$(KB_DSN="sqlite:" $KB doctor 2>&1); then echo "断言失败: 坏 DSN 应退出码非零"; exit 1; else has "doctor: 3 ok, 0 warn, 3 fail" "$out"; fi
 echo "E2E_GREEN"

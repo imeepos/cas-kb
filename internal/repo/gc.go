@@ -68,6 +68,42 @@ func (r *Repo) GC(ctx context.Context) (GCResult, error) {
 	return res, nil
 }
 
+// UnreachableCount 只读统计「下次 GC 将清扫」的悬垂/未达对象数,不删除任何对象。
+// 标记口径与 GC 完全一致(全部项目分支头出发 + 保留水位),供 kb doctor 的
+// fsck 检查把悬垂对象以 warn 级提示(学 git fsck --dangling:信息非错误);
+// 这是同一套标记逻辑的第二出口,不是第二套诊断实现。
+func (r *Repo) UnreachableCount(ctx context.Context) (int, error) {
+	keep, err := r.gcKeepLast(ctx)
+	if err != nil {
+		return 0, err
+	}
+	branches, err := r.st.BranchListAll(ctx)
+	if err != nil {
+		return 0, err
+	}
+	depth, err := r.snapshotDepths(ctx, branches)
+	if err != nil {
+		return 0, err
+	}
+	marked := map[string]bool{}
+	for addr, d := range depth {
+		if err := r.markSnapshotContent(ctx, addr, d, keep, marked); err != nil {
+			return 0, err
+		}
+	}
+	unreached := 0
+	err = r.st.List(ctx, func(info store.ObjectInfo) error {
+		if !marked[string(info.Addr)] {
+			unreached++
+		}
+		return nil
+	})
+	if err != nil {
+		return 0, err
+	}
+	return unreached, nil
+}
+
 // exportBranches 在清扫前导出分支表;未配置导出函数时报错拒绝。
 func (r *Repo) exportBranches(ctx context.Context, branches []store.BranchRef) error {
 	if r.gcExport == nil {

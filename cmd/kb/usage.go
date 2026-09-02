@@ -28,6 +28,7 @@ func usage() {
 		"  kb merge --continue [-m msg] | --abort  # 收束合并中间态:--continue 裁决后落双亲合并快照,--abort 放弃并回到合并前\n" +
 		"  kb gc [--keep-last K]  # 垃圾回收;--keep-last 只保留最近 K 个快照的检索索引\n" +
 		"  kb fsck\n" +
+		"  kb doctor [--json] [--check <name>…] [-l|--list-checks]  # 健康自检(storage/fsck/version/config/gc-protect/serve);有 fail 退出码 1,warn 不拦\n" +
 		"  kb index rebuild [-m msg]  # 从当前快照全量重建检索索引(M4)\n" +
 		"  kb reset <分支名|地址|短标识>  # 回退分支指针,放弃其后修改\n" +
 		"  kb project ls [--json] | create <名称> [--desc 描述] | desc <名称> [描述]\n" +
