@@ -185,8 +185,42 @@ done
 step "serve healthz 探活";     has '"ok": true' "$(curl -sf "$SERVE_URL/healthz")"
 step "serve api note 读单条";  has '"title": "A1"' "$(curl -sf "$SERVE_URL/api/v1/note?path=task")"
 step "serve api search 检索";  has '"path": "hist/n12"' "$(curl -sf -G "$SERVE_URL/api/v1/search" --data-urlencode 'q=H12')"
-step "serve 只读纪律 POST 405"; code=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$SERVE_URL/api/v1/note"); [ "$code" = "405" ] || { echo "断言失败: POST 应 405,得到 $code"; exit 1; }
+step "serve 只读纪律 POST 403"; code=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$SERVE_URL/api/v1/note"); [ "$code" = "403" ] || { echo "断言失败: 未配置令牌 POST 应 403,得到 $code"; exit 1; }
+step "serve 只读模式文案";     rmsg=$(curl -s -X POST "$SERVE_URL/api/v1/note"); has "服务未配置写入令牌" "$rmsg"
 step "kill serve 优雅退出";    kill "$SERVE_PID"; wait "$SERVE_PID" || { echo "断言失败: serve 应优雅退出(退出码 0): $(cat "$SERVE_LOG")"; exit 1; }
+
+# ---- 写入型 HTTP API(KB_SERVE_TOKEN,DESIGN §8.6)----
+step "write 带令牌起 serve";   WLOG="$WORK/serve-write.log"; KB_SERVE_TOKEN=e2e-write-token "$KB" -p alpha serve --addr 127.0.0.1:0 > "$WLOG" 2>&1 & WPID=$!
+W_URL=""
+for _ in $(seq 1 50); do
+  W_URL=$(grep -m1 '^监听' "$WLOG" 2>/dev/null | awk '{print $NF}' || true)
+  if [ -n "$W_URL" ]; then break; fi
+  sleep 0.1
+done
+[ -n "$W_URL" ] || { echo "断言失败: serve(write) 未在 5s 内就绪: $(cat "$WLOG")"; kill "$WPID" 2>/dev/null || true; exit 1; }
+step "write 缺令牌 401";       code=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H 'Content-Type: application/json' -d '{"path":"api/n1","title":"T","body":"b"}' "$W_URL/api/v1/note"); [ "$code" = "401" ] || { echo "断言失败: 缺令牌应 401,得到 $code"; exit 1; }
+step "write 错令牌 401";       code=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H 'Authorization: Bearer wrong' -H 'Content-Type: application/json' -d '{"path":"api/n1","title":"T","body":"b"}' "$W_URL/api/v1/note"); [ "$code" = "401" ] || { echo "断言失败: 错令牌应 401,得到 $code"; exit 1; }
+step "write POST 201";        wout=$(curl -s -X POST -H 'Authorization: Bearer e2e-write-token' -H 'Content-Type: application/json' -d '{"path":"api/n1","title":"API 笔记","tags":["e2e"],"body":"write api 正文 wmark"}' "$W_URL/api/v1/note"); has '"path": "api/n1"' "$wout"; has '"address"' "$wout"; has '"short"' "$wout"
+step "write search 立即命中";   has '"path": "api/n1"' "$(curl -sf -G "$W_URL/api/v1/search" --data-urlencode 'q=wmark')"
+step "write CLI note get 断言"; has "API 笔记" "$($KB -p alpha note get api/n1)"
+step "write CLI get --json";  has '"title": "API 笔记"' "$($KB -p alpha note get api/n1 --json)"
+step "write DELETE";          dout=$(curl -s -X DELETE -H 'Authorization: Bearer e2e-write-token' "$W_URL/api/v1/note?path=api/n1"); has '"removed": 1' "$dout"
+step "write CLI 确认删除";      if $KB -p alpha note get api/n1 >/dev/null 2>&1; then echo "断言失败: API 删除后 CLI 应报不存在"; exit 1; fi
+step "write DELETE 再删 404";  code=$(curl -s -o /dev/null -w '%{http_code}' -X DELETE -H 'Authorization: Bearer e2e-write-token' "$W_URL/api/v1/note?path=api/n1"); [ "$code" = "404" ] || { echo "断言失败: 重复删除应 404,得到 $code"; exit 1; }
+step "kill serve(write)";     kill "$WPID"; wait "$WPID" || { echo "断言失败: serve(write) 应优雅退出: $(cat "$WLOG")"; exit 1; }
+
+# ---- 无令牌实例:写端点一律 403(纯只读降级)----
+step "write 无令牌起 serve";   RLOG="$WORK/serve-ro.log"; "$KB" -p alpha serve --addr 127.0.0.1:0 > "$RLOG" 2>&1 & RPID=$!
+R_URL=""
+for _ in $(seq 1 50); do
+  R_URL=$(grep -m1 '^监听' "$RLOG" 2>/dev/null | awk '{print $NF}' || true)
+  if [ -n "$R_URL" ]; then break; fi
+  sleep 0.1
+done
+[ -n "$R_URL" ] || { echo "断言失败: serve(ro) 未在 5s 内就绪: $(cat "$RLOG")"; kill "$RPID" 2>/dev/null || true; exit 1; }
+step "write 无令牌 POST 403";  code=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H 'Content-Type: application/json' -d '{"path":"api/n2","title":"T","body":"b"}' "$R_URL/api/v1/note"); [ "$code" = "403" ] || { echo "断言失败: 无令牌 POST 应 403,得到 $code"; exit 1; }
+step "write 无令牌 DELETE 403"; code=$(curl -s -o /dev/null -w '%{http_code}' -X DELETE "$R_URL/api/v1/note?path=task"); [ "$code" = "403" ] || { echo "断言失败: 无令牌 DELETE 应 403,得到 $code"; exit 1; }
+step "kill serve(ro)";        kill "$RPID"; wait "$RPID" || { echo "断言失败: serve(ro) 应优雅退出: $(cat "$RLOG")"; exit 1; }
 
 step "gc + fsck";            out=$($KB gc); has "已备份" "$out"; has "完整,无问题" "$($KB fsck)"
 echo "E2E_GREEN"
