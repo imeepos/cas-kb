@@ -24,7 +24,8 @@ var ErrDiverge = errors.New("repo: 本地与远端已分叉,拒绝快进")
 // T44 D2(docs/review/drill-multi-cli.md):与真分叉(ErrDiverge)文案分流——
 // 有共同祖先才指路 --merge;这里指引 --force 覆盖或 --merge --allow-unrelated
 // 做空基线合并,修复「分叉指引改用 --merge 而 --merge 又拒绝」的指引断裂。
-var ErrDivergeNoCommonHistory = errors.New("repo: 两库无共同历史,拒绝快进(--force 覆盖,或 --merge --allow-unrelated 做空基线合并)")
+// T47-D:两条出路各配一句代价说明(调研 §2.3-3),把取舍摆到报错现场。
+var ErrDivergeNoCommonHistory = errors.New("repo: 两库无共同历史,拒绝快进(--force 覆盖:丢弃本地独有提交;或 --merge --allow-unrelated 做空基线合并:两侧新增互不冲突即全取)")
 
 // Pull 把远端分支的可达对象同步到本地并据祖先关系推进分支。
 // srcProject 允许从同一存储的其它项目拉取(同库时零对象传输)。

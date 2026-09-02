@@ -307,7 +307,7 @@ if out=$(run_c -p alpha pull "sqlite:$CDIR/b.db" 2>&1); then echo "断言失败:
 step "coldstart --merge 缺旗标同样拒绝"
 if out=$(run_c -p alpha pull "sqlite:$CDIR/b.db" --merge 2>&1); then echo "断言失败: 缺 --allow-unrelated 应拒绝"; exit 1; else has "无共同历史" "$out"; has "--allow-unrelated" "$out"; fi
 step "coldstart --merge --allow-unrelated 零冲突落库(双亲)"
-out=$(run_c -p alpha pull "sqlite:$CDIR/b.db" --merge --allow-unrelated); has "冲突 0 条" "$out"; has "合并快照 sha256:" "$out"
+out=$(run_c -p alpha pull "sqlite:$CDIR/b.db" --merge --allow-unrelated); has "冲突 0 条" "$out"; has "合并快照 sha256:" "$out"; has "冷启动完成" "$out"
 DBHEAD=$(run_d -p alpha log | head -1 | awk '{print $1}')
 PARENTS=$(run_c -p alpha log | head -1 | grep -oE 'parent=[^ ]+')
 echo "$PARENTS" | grep -qF "$DBHEAD" || { echo "断言失败: 空基线合并双亲应含 theirs 头 $DBHEAD: $PARENTS"; exit 1; }
