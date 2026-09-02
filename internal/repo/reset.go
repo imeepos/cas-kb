@@ -35,7 +35,7 @@ func (r *Repo) Reset(ctx context.Context, ref string) (ResetResult, error) {
 		return ResetResult{}, err
 	}
 	if err := r.st.BranchSet(ctx, r.project, r.branch, target); err != nil {
-		return ResetResult{}, err
+		return ResetResult{}, r.translateBranchSetErr(err)
 	}
 	return ResetResult{From: old, To: target, Abandoned: abandoned}, nil
 }
