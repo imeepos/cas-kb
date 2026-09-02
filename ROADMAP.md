@@ -2,7 +2,7 @@
 
 每个里程碑交付可独立验收的能力;验收标准即测试用例的来源。
 
-> 状态:M1–M3.10 已交付并通过验收(M3.10=存储后端可插拔:SQLite 默认、PostgreSQL 可选);M3.11=dir tree 全库视图(展示层增量)已交付;M4 CLI 部分已交付(倒排索引纳入快照 + kb search / link resolve / index rebuild,schema v5);M3.12=Markdown 互操作(export md / import md,增量)已交付;M4 增补=gc --keep-last K 历史保留水位(历史索引精简)已交付;M4 收尾=只读 HTTP API(kb serve,DESIGN §8.5)已交付;M4.1=写入型 HTTP API(kb serve 写端点,令牌鉴权,DESIGN §8.6)已交付;M4.2=检索片段高亮(纯展示层增量:--snippet / snippet=1,DESIGN §7.1)已交付;M5=三方合并(pull --merge,repo 内核 A 批次 + CLI/中间态/收束 B 批次,DESIGN §6.3)已交付。
+> 状态:M1–M3.10 已交付并通过验收(M3.10=存储后端可插拔:SQLite 默认、PostgreSQL 可选);M3.11=dir tree 全库视图(展示层增量)已交付;M4 CLI 部分已交付(倒排索引纳入快照 + kb search / link resolve / index rebuild,schema v5);M3.12=Markdown 互操作(export md / import md,增量)已交付;M4 增补=gc --keep-last K 历史保留水位(历史索引精简)已交付;M4 收尾=只读 HTTP API(kb serve,DESIGN §8.5)已交付;M4.1=写入型 HTTP API(kb serve 写端点,令牌鉴权,DESIGN §8.6)已交付;M4.2=检索片段高亮(纯展示层增量:--snippet / snippet=1,DESIGN §7.1)已交付;M5=三方合并(pull --merge,repo 内核 A 批次 + CLI/中间态/收束 B 批次,DESIGN §6.3)已交付;T44=多端冷启动修复(pull 空远端「已是最新」空操作 + `--merge --allow-unrelated` 空基线合并 + 无共同历史文案分流,DESIGN §6.2/§6.3)已交付。
 
 ## M1 存储内核
 
@@ -210,12 +210,15 @@
 - pull --merge 零冲突一步完成(冲突 0 条 + 合并快照输出 + fsck + 双侧检索)、冲突中间态(清单字段/退出码非零/指针不动)、--abort(中间态清理 + 回到合并前 + 无中间态指引)、--continue(裁决稿可见 + 双亲 log 行 + 检索 + fsck + 分支清理)、--force/--merge 互斥、log 双亲展示(两库头短标识无序对)、冻结提示(直接写/pull/commit 拒绝且读不受限)——`cmd/kb` TestMergeCLI*(merge_cli_test.go)
 - e2e 全流程(两库互 pull):共同基点 → 零冲突双亲落库断言 → 冲突(清单 + 退出码 + 指针不动)→ 无旗标 pull 拒绝文案含 --merge 指引 → 冻结 → --abort → 再走 --continue 裁决闭环(检索命中 + fsck)→ 互斥——`scripts/e2e.sh` 合并段
 - store 契约:MetaDelete(SQLite/PG 双后端,幂等)——`internal/store` TestMeta*
+- 冷启动 D1(T44):远端项目存在但分支不存在(零提交)pull → 「已是最新」空操作——本地有/双空两形态、--force 与 --merge 同为空操作、远端项目不存在仍响亮报错——`internal/repo` TestMergeColdPullRemoteEmptyNoop(mergecold_test.go)+ `cmd/kb` TestMergeColdCLIPullRemoteEmptyNoop + e2e coldstart 段
+- 冷启动 D2(T44):无共同历史缺旗标拒绝且新文案分流(真分叉仍指 --merge,无共同历史指 --force 或 --merge --allow-unrelated);旗标单独给或与 --force 同给响亮拒绝;空基线三方合并零冲突落双亲(两侧新增全取、双侧检索、fsck、对侧 ff、幂等 no-op),同路径异地址 content 冲突进既有中间态并以 --stage/--continue 闭环——`internal/repo` TestMergeColdUnrelated*(mergecold_test.go)+ `cmd/kb` TestMergeColdCLIUnrelated*(mergecold_cli_test.go)+ e2e coldstart 段
 
 **验收命令**
 
 - `go test ./internal/repo/ -run "Merge" -v`
 - `go test ./cmd/kb/ -run "MergeCLI" -v`
+- `go test ./cmd/kb/ -run "MergeCold" -v`(T44 冷启动 CLI;internal 侧由 `-run "Merge"` 覆盖 TestMergeCold*)
 - `go test ./internal/store/ -run TestMeta -v`
 - `./scripts/e2e.sh`(新增 merge 段)
 
-**状态**:已交付(A 批次:internal/repo/merge.go + TestMerge*;B 批次:internal/repo/mergestate.go + TestMergeState*、cmd/kb pull --merge / merge --continue|--abort / stage 合并态 / log 双亲 + TestMergeCLI*、scripts/e2e.sh 合并段全绿)。
+**状态**:已交付(A 批次:internal/repo/merge.go + TestMerge*;B 批次:internal/repo/mergestate.go + TestMergeState*、cmd/kb pull --merge / merge --continue|--abort / stage 合并态 / log 双亲 + TestMergeCLI*、scripts/e2e.sh 合并段全绿;T44 冷启动批次:internal/repo TestMergeCold* + cmd/kb TestMergeColdCLI* + e2e coldstart 段全绿——空远端空操作 + --merge --allow-unrelated 空基线合并 + 分叉文案分流)。

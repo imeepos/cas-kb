@@ -87,6 +87,7 @@
 多机同步与三方合并(两台机器互为远端,分叉不再只有 --force 一条路):
 
     ./kb pull sqlite:/data/other/caskb.db --merge   # 分叉时三方合并;零冲突直接落双亲合并快照
+    ./kb pull sqlite:/data/other/caskb.db --merge --allow-unrelated   # 冷启动:两库各自 init 无共同历史,空基线合并(两侧新增互不冲突即全取)
     # 冲突时退出码非零,输出冲突清单并建 <branch>-merge 中间态(原分支指针不动)
     ./kb stage                            # 合并中态:查看冲突清单与裁决进度
     ./kb note set task --title 通道 --body "合并稿" --stage   # 逐条裁决(或 note rm --stage 接受删除)
