@@ -128,6 +128,7 @@ func (r *Repo) Note(ctx context.Context, path string) (*NoteRef, error) {
 }
 
 // ListNotes 列出 dir 目录(递归含子目录)下的全部条目;dir 为空表示根目录。
+// 会加载每条的正文(供摘要派生);纯列表场景用 ListNotesMeta 更快。
 func (r *Repo) ListNotes(ctx context.Context, dir string) ([]*NoteRef, error) {
 	parts, err := ParsePath(dir)
 	if err != nil {
@@ -143,6 +144,28 @@ func (r *Repo) ListNotes(ctx context.Context, dir string) ([]*NoteRef, error) {
 	}
 	var out []*NoteRef
 	if err := r.walkNotes(ctx, start, parts, &out); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// ListNotesMeta 列出条目但不加载正文(轻量读取;Body 为空)。
+// 纯列表/计数场景收益明显:每条少一次 blob 读取与解码。
+func (r *Repo) ListNotesMeta(ctx context.Context, dir string) ([]*NoteRef, error) {
+	parts, err := ParsePath(dir)
+	if err != nil {
+		return nil, err
+	}
+	t, _, err := r.currentTree(ctx)
+	if err != nil {
+		return nil, err
+	}
+	start, err := r.walkDir(ctx, t, parts)
+	if err != nil {
+		return nil, err
+	}
+	var out []*NoteRef
+	if err := r.walkNotesMeta(ctx, start, parts, &out); err != nil {
 		return nil, err
 	}
 	return out, nil
@@ -244,6 +267,51 @@ func (r *Repo) walkNotes(ctx context.Context, t *object.Tree, prefix []string, o
 		*out = append(*out, ref)
 	}
 	return nil
+}
+
+// walkNotesMeta 递归收集条目但不加载正文(轻量变体,输出按路径字典序)。
+func (r *Repo) walkNotesMeta(ctx context.Context, t *object.Tree, prefix []string, out *[]*NoteRef) error {
+	entries := append([]object.TreeEntry(nil), t.Entries...)
+	sort.SliceStable(entries, func(i, j int) bool { return entries[i].Slug < entries[j].Slug })
+	for _, e := range entries {
+		path := JoinPath(append(append([]string{}, prefix...), e.Slug))
+		if e.Type == object.EntryDir {
+			sub, err := r.loadTree(ctx, e.Addr)
+			if err != nil {
+				return err
+			}
+			if err := r.walkNotesMeta(ctx, sub, append(prefix, e.Slug), out); err != nil {
+				return err
+			}
+			continue
+		}
+		ref, err := r.noteMetaAt(ctx, path, e.Addr)
+		if err != nil {
+			return err
+		}
+		*out = append(*out, ref)
+	}
+	return nil
+}
+
+// noteMetaAt 按路径/addr 读取条目元数据(不加载正文,轻量)。
+func (r *Repo) noteMetaAt(ctx context.Context, path string, addr hash.Address) (*NoteRef, error) {
+	data, kind, err := r.st.Get(ctx, addr)
+	if err != nil {
+		return nil, err
+	}
+	if kind != object.KindNote {
+		return nil, fmt.Errorf("repo: %s 不是 note", addr)
+	}
+	n, err := object.DecodeNote(data)
+	if err != nil {
+		return nil, err
+	}
+	slug := path
+	if i := strings.LastIndex(path, PathSep); i >= 0 {
+		slug = path[i+1:]
+	}
+	return &NoteRef{Path: path, Slug: slug, Addr: addr, Note: n}, nil
 }
 
 // noteAt 按路径/addr 读取条目详情。

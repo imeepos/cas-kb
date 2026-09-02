@@ -11,6 +11,8 @@ import (
 )
 
 // Put 幂等写入对象并返回内容地址。同地址重复写等价于空操作。
+// 存储字节经过透明压缩编码(仅索引类,见 compress.go);地址与哈希
+// 始终基于逻辑字节,Get 返回解压后的原始内容。
 func (s *SQLite) Put(ctx context.Context, kind object.Kind, data []byte) (hash.Address, error) {
 	addr := hash.Sum(data)
 	if data == nil {
@@ -18,9 +20,10 @@ func (s *SQLite) Put(ctx context.Context, kind object.Kind, data []byte) (hash.A
 		// (空 body blob 在 SQLite 读回时可能呈现为 nil,拉取/恢复路径会再写回)
 		data = []byte{}
 	}
+	stored := encodeObjectData(kind, data)
 	_, err := s.db.ExecContext(ctx,
 		"INSERT INTO objects (addr, kind, size, data) VALUES (?, ?, ?, ?) ON CONFLICT (addr) DO NOTHING",
-		string(addr), string(kind), len(data), data)
+		string(addr), string(kind), len(stored), stored)
 	if err != nil {
 		return "", fmt.Errorf("store: Put 失败: %w", err)
 	}
@@ -28,6 +31,7 @@ func (s *SQLite) Put(ctx context.Context, kind object.Kind, data []byte) (hash.A
 }
 
 // Get 读取对象字节与类型;不存在返回 ErrNotFound。
+// 返回逻辑字节(索引类对象自动解压),与写入前内容逐字节一致。
 func (s *SQLite) Get(ctx context.Context, addr hash.Address) ([]byte, object.Kind, error) {
 	var data []byte
 	var kind string
@@ -39,7 +43,11 @@ func (s *SQLite) Get(ctx context.Context, addr hash.Address) ([]byte, object.Kin
 	if err != nil {
 		return nil, "", fmt.Errorf("store: Get 失败: %w", err)
 	}
-	return data, object.Kind(kind), nil
+	logical, err := decodeObjectData(object.Kind(kind), data)
+	if err != nil {
+		return nil, "", fmt.Errorf("store: Get 解码失败: %w", err)
+	}
+	return logical, object.Kind(kind), nil
 }
 
 // Has 报告对象是否存在。

@@ -63,7 +63,16 @@ func noteLs(ctx context.Context, r *repo.Repo, args []string) error {
 	if err != nil {
 		return err
 	}
-	refs, err := r.ListNotes(ctx, f.get("--dir", ""))
+	// 文本模式走轻量读取(不加载正文);--json 需要正文派生摘要
+	var refs []*repo.NoteRef
+	if f.has("--json") {
+		refs, err = r.ListNotes(ctx, f.get("--dir", ""))
+	} else {
+		refs, err = r.ListNotesMeta(ctx, f.get("--dir", ""))
+	}
+	if err != nil {
+		return err
+	}
 	if err != nil {
 		return err
 	}
