@@ -2,15 +2,15 @@
 
 一句话定位:以**内容寻址存储(CAS)+ Merkle 树**为核心的知识库系统。
 存储引擎**默认 SQLite 本地文件**(零依赖开箱即用),`KB_DSN=postgres://…` 可切换 PostgreSQL(生产部署于主机 `102`);开发语言 **Go**,交付物为 CLI `kb`。
-本仓库包含设计文档、数据模型规格与实现代码:ROADMAP 的 **M1–M3.10 已交付**(存储内核、条目与版本、同步与运维、项目隔离、回退与历史读取、AI 选用元数据、目录层级、库级运维命令、存储后端可插拔),M4(检索/HTTP API)为可选、未开工。
+本仓库包含设计文档、数据模型规格与实现代码:ROADMAP 的 **M1–M3.11 与 M4 CLI 已交付**(存储内核、条目与版本、同步与运维、项目隔离、回退与历史读取、AI 选用元数据、目录层级、库级运维命令、双后端、全文检索与倒排索引),HTTP API 为 M4 可选项、未开工。
 
 ## 文档导航
 
 | 文档 | 内容 |
 |---|---|
 | [DESIGN.md](DESIGN.md) | 完整设计:对象模型、存储设计、同步协议、GC、检索、部署与权衡 |
-| [schema.sql](schema.sql) | PostgreSQL 数据模型 DDL 规格(schema v4,含项目隔离、AI 选用描述与目录层级) |
-| [schema_sqlite.sql](schema_sqlite.sql) | SQLite 数据模型 DDL(schema.sql 的语义镜像,双后端共用 schema v4) |
+| [schema.sql](schema.sql) | PostgreSQL 数据模型 DDL 规格(schema v5,含项目隔离、AI 选用描述与目录层级) |
+| [schema_sqlite.sql](schema_sqlite.sql) | SQLite 数据模型 DDL(schema.sql 的语义镜像,双后端共用 schema v5) |
 | [ROADMAP.md](ROADMAP.md) | 落地路线图:M1–M4 里程碑与验收标准 |
 
 ## 核心思想(30 秒版)
@@ -21,7 +21,7 @@
 - 全库唯一的可变状态 = 分支指针表(`branches: (项目, 名字) → 快照地址`)
 - 版本历史 = 快照 DAG;同步 = 比较哈希、只传缺失对象;完整性 = 地址即校验和
 
-## 已交付能力(M1–M3.10)
+## 已交付能力(M1–M4 CLI)
 
 - **M1 存储内核**:hash / object / store 三层 + 迁移与版本门禁(`kb init`)
 - **M2 条目与版本**:`kb note set|get|rm|ls`、`kb log`、`kb diff`(支持分支名、快照地址或日志短标识)
@@ -32,11 +32,16 @@
 - **M3.8 目录层级**:条目按全路径定位(`note set go/concurrency/channel`),目录可嵌套(`kb dir add|ls|rm|tree`,mkdir -p 语义、非空删除需 `--force`);树对象编码演进为带类型条目(schema v4)
 - **M3.9 库级运维**:`kb backup|restore`(原生 .ckb,跨后端可移植、逐对象哈希校验、非空恢复需 `--force`)、`kb wipe --force`(重置为全新库)
 - **M3.10 双后端**:默认 SQLite 文件库(零外部依赖);`KB_DSN=postgres://…` 切换 PostgreSQL;两后端同一套测试与 e2e 全绿,.ckb 备份可跨后端迁移
+- **M3.11 dir tree 全库视图**:不带 `-p` 时渲染全库树(项目为顶层节点,逐项目挂默认分支树)
+- **M4 CLI 检索**(schema v5):BM25 全文检索 `kb search`(字段加权 标题3/标签2/正文1,结果确定性可复现,`--at` 历史快照检索);倒排索引纳入快照(indexroot/indexshard,结构共享式增量);`kb index rebuild` 全量重建;`kb link resolve` 链接解析
+- **批量导入**:`kb bulk import <jsonl>` N 条笔记一次提交 + 一次索引增量(2000 条由逐条 103s/6.7GB 降至 350ms/11MB)
+- **暂存工作流**:`note set/rm`、`dir rm --stage` 累积到暂存分支(单条成本恒定),`kb stage` 查看清单、`kb commit` 合入、`kb commit --abort` 丢弃
+- **存储透明压缩**:SQLite 索引对象写入 gzip、读取透明解压,库体积 −60%;`KB_COMPRESS=off` 可关
 
 ## 快速开始
 
     go build -o kb ./cmd/kb              # 拉取新代码后记得重建二进制
-    ./kb init                            # 默认 SQLite:库文件 ~/.local/share/caskb/caskb.db(schema v4;旧版本库会拒绝并提示重建)
+    ./kb init                            # 默认 SQLite:库文件 ~/.local/share/caskb/caskb.db(schema v5;旧版本库会拒绝并提示重建)
     ./kb --help                          # 完整命令清单
 
     # 可选:切换 PostgreSQL 后端(生产 102 主机或本地任意可达实例)

@@ -1,7 +1,7 @@
 -- =====================================================================
--- cas-kb SQLite 数据模型规格(schema v4)
+-- cas-kb SQLite 数据模型规格(schema v5)
 -- 本文件是 schema.sql(PostgreSQL 权威规格)的语义镜像,供 SQLite 后端使用:
--- 表/列/约束/默认播种/索引一一对应,库 schema 版本一致(当前 4)。
+-- 表/列/约束/默认播种/索引一一对应,库 schema 版本一致(当前 5)。
 -- 两文件必须同步演进:任何数据模型变更两处一起改,版本号一致。
 -- 与 PostgreSQL 的刻意差异(仅类型与方言,不改语义):
 --   bytea → BLOB;timestamptz+now() → TEXT+strftime(UTC ISO8601);

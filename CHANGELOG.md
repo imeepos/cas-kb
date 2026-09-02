@@ -3,6 +3,22 @@
 本文件记录面向用户的显著变更;格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 升级操作指引见 [docs/upgrade.md](docs/upgrade.md)。
 
+## v0.3.0 - 2026-09-02
+
+### Added
+- 批量导入 `kb bulk import <jsonl>`(JSONL 每行 path/title/tags/body):N 条笔记合并为一次提交 + 一次索引批量增量;压测同语料 2000 条由逐条提交 103s/库 6.7GB 降至 350ms/11MB
+- 暂存工作流(借鉴 git):`note set/rm`、`dir rm` 加 `--stage` 进入 `<branch>-stage` 暂存分支累积修改(快照不建索引,单条成本恒定);`kb stage` 查看清单,`kb commit` 以暂存基线为参照生成 main 单快照 + 一次索引增量,`kb commit --abort` 丢弃
+- 存储透明压缩(SQLite 后端):indexroot/indexshard 对象写入时 gzip、读取自动解压,库体积 −60%(1.45GB→580MB),地址/哈希/上层语义全透明,`.ckb` 备份可移植性不变;`KB_COMPRESS=off` 实验开关
+
+### Changed
+- `note ls` 文本模式走轻量元数据读取(不加载正文),2000 条 316ms→30ms
+
+### Fixed
+- 分支推进外键失败转译为可行动提示(「项目不存在,请先 kb project create」),覆盖 note/blob 写入、索引重建、pull、reset 四个写路径
+
+### Docs
+- DESIGN §7 入档索引三难权衡定论:写快/读快/历史可复现三者取二,现架构取读快 + 历史可复现;段化与分支缓存两案被否的量化依据与触发条件
+
 ## v0.2.0 - 2026-09-01
 
 ### Added
