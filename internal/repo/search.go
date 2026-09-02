@@ -7,6 +7,7 @@ import (
 	"github.com/imeepos/cas-kb/internal/hash"
 	"github.com/imeepos/cas-kb/internal/index"
 	"github.com/imeepos/cas-kb/internal/object"
+	"github.com/imeepos/cas-kb/internal/store"
 )
 
 // SearchHit 是检索结果项:命中元信息 + 展示字段(标题/标签/正文,摘要由展示层派生)。
@@ -54,6 +55,9 @@ func (r *Repo) Search(ctx context.Context, query, ref string) ([]SearchHit, erro
 	}
 	root, err := index.LoadRoot(ctx, r.st, snap.Index)
 	if err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			return nil, errors.New("repo: 该快照的检索索引已被 gc 精简(--keep-last);如需检索请基于最新快照,或调整 gc 保留策略")
+		}
 		return nil, err
 	}
 	hits, err := index.Search(ctx, r.st, root, query)

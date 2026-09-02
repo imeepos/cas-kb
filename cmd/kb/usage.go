@@ -25,7 +25,7 @@ func usage() {
 		"  kb stage | kb commit [-m msg] [--abort]  # 暂存工作流:--stage 变更累积,commit 一次提交\n" +
 		"  kb diff <base> <tip>     # base/tip 可为分支名、地址或短标识(kb log 首列)\n" +
 		"  kb pull [remoteDsn] [--force]\n" +
-		"  kb gc\n" +
+		"  kb gc [--keep-last K]  # 垃圾回收;--keep-last 只保留最近 K 个快照的检索索引\n" +
 		"  kb fsck\n" +
 		"  kb index rebuild [-m msg]  # 从当前快照全量重建检索索引(M4)\n" +
 		"  kb reset <分支名|地址|短标识>  # 回退分支指针,放弃其后修改\n" +
