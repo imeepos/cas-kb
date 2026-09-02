@@ -3,7 +3,7 @@
 本文件记录面向用户的显著变更;格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 升级操作指引见 [docs/upgrade.md](docs/upgrade.md)。
 
-## Unreleased
+## v0.6.1 - 2026-09-02
 
 ### Added
 - 冷启动空基线三方合并(T44,DESIGN §6.3):`kb pull --merge --allow-unrelated`——两库无共同历史(各自 init 的冷启动)时以空树为基准做三方合并,两侧条目均视为新增:同路径同地址自动合、同路径异地址按既有判定表记冲突(冲突走既有 `<branch>-merge` 中间态与 `--continue`/`--abort` 收束);旗标仅可与 `--merge` 连用,单独给或与 `--force` 同给响亮拒绝;有共同祖先时该旗标不改变任何行为
@@ -11,6 +11,7 @@
 ### Fixed
 - 多端冷启动(T42 演练报告 D1):远端项目存在但分支不存在(远端零提交)时 `kb pull` 不再硬报错「store: 分支不存在」,改为「已是最新」空操作(exit 0),与「本地空拉非空可 fast-forward」对称;本地分支也不存在(双空)同样空操作
 - 多端冷启动(T42 演练报告 D2):分叉判定拆两类文案——有共同祖先的真分叉仍提示 `kb pull --merge`;无共同历史改为提示「--force 覆盖,或 --merge --allow-unrelated 做空基线合并」,修复「指引改用 --merge 而 --merge 又拒绝」的指引断裂
+- docs/serve.md(T43 演练报告 D1):launchd 示例裸 `&&` 未转义导致 plist 无法加载,改为 `&amp;&amp;`(提取实测 plutil/xmllint 通过);另补 ps -Ao 平台注记、systemd 建用户步骤、grep 计数判定说明(T43 P2/P3/P4)
 
 ## v0.6.0 - 2026-09-02
 
