@@ -192,6 +192,43 @@ func (r *Repo) NoteAt(ctx context.Context, path, ref string) (*NoteRef, error) {
 	return r.noteAt(ctx, path, e.Addr)
 }
 
+// ListNotesAt 列出指定快照(分支名/地址/短标识;缺省当前分支头)下
+// dir 目录(递归含子目录)的全部条目(含正文);dir 为空表示根目录。
+// Markdown 导出(--at 历史快照)即基于此契约。
+func (r *Repo) ListNotesAt(ctx context.Context, dir, ref string) ([]*NoteRef, error) {
+	parts, err := ParsePath(dir)
+	if err != nil {
+		return nil, err
+	}
+	t, err := r.treeForRef(ctx, ref)
+	if err != nil {
+		return nil, err
+	}
+	start, err := r.walkDir(ctx, t, parts)
+	if err != nil {
+		return nil, err
+	}
+	var out []*NoteRef
+	if err := r.walkNotes(ctx, start, parts, &out); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// treeForRef 读取 ref 指向快照的 root tree;ref 为空串时返回当前分支头
+// 的树(无头时为空树)。
+func (r *Repo) treeForRef(ctx context.Context, ref string) (*object.Tree, error) {
+	if ref == "" {
+		t, _, err := r.currentTree(ctx)
+		return t, err
+	}
+	addr, err := r.Resolve(ctx, ref)
+	if err != nil {
+		return nil, err
+	}
+	return r.treeAtSnapshot(ctx, addr)
+}
+
 // currentTree 读取当前分支头的 root tree;无头时返回空树。
 func (r *Repo) currentTree(ctx context.Context) (*object.Tree, bool, error) {
 	head, has, err := r.head(ctx)

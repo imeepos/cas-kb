@@ -133,5 +133,34 @@ step "再次 commit 无暂存";     has "(no staged changes)" "$($KB -p alpha co
 step "abort 丢弃暂存";        $KB -p alpha note set st/z --title Z --body z --stage >/dev/null; out=$($KB -p alpha commit --abort); has "暂存已丢弃" "$out"
 if echo "$($KB -p alpha note ls)" | grep -qF "st/z"; then echo "断言失败: abort 后不应有 st/z"; exit 1; fi
 
+# ---- Markdown 互操作(export md / import md,DESIGN §6.8)----
+step "project create mdio";     $KB project create mdio > /dev/null
+step "markdown 源目录";          mkdir -p mds/go
+cat > mds/go/channel.md <<'MD'
+---
+title: 通道笔记
+tags: go, 并发
+---
+chan 语义正文。
+MD
+cat > mds/idea.md <<'MD'
+---
+title: 点子
+---
+随手记的点子。
+MD
+step "import md 2 条";          out=$($KB -p mdio import md mds -m "md import"); has "import md 2 条" "$out"
+step "导入后检索命中";           out=$($KB -p mdio search 通道); has "go/channel" "$out"
+step "export md";               out=$($KB -p mdio export md mdout); has "export md 2 条" "$out"
+step "roundtrip 逐字节一致";     diff -r mds mdout > /dev/null || { echo "断言失败: export(import(X)) 应与 X 逐字节一致"; exit 1; }
+step "重复导出拒绝提示 --force";  if out=$($KB -p mdio export md mdout 2>&1); then echo "断言失败: 目标已存在应整批拒绝"; exit 1; else has "force 整批覆盖" "$out"; fi
+step "改库后再导入还原";         $KB -p mdio note set idea --title 点子改 --body 改动 -m tweak > /dev/null
+out=$($KB -p mdio import md mdout -m restore); has "import md 1 条" "$out"; has "点子" "$($KB -p mdio note get idea)"
+step "再次导入零变更";           out=$($KB -p mdio import md mdout); has "无新快照" "$out"
+step "再次导出仍逐字节一致";     $KB -p mdio export md mdout2 > /dev/null; diff -r mdout mdout2 > /dev/null || { echo "断言失败: 二次导出应逐字节一致"; exit 1; }
+step "问题文件整批拒绝";         mkdir -p badmd; printf -- '---\ntags: x\n---\nno title\n' > badmd/no-title.md; printf 'plain text\n' > badmd/readme.txt
+if out=$($KB -p mdio import md badmd 2>&1); then echo "断言失败: 问题文件应拒绝"; exit 1; else has "no-title.md" "$out"; has "readme.txt" "$out"; fi
+step "清理 markdown 产物";       rm -rf mds mdout mdout2 badmd
+
 step "gc + fsck";            out=$($KB gc); has "已备份" "$out"; has "完整,无问题" "$($KB fsck)"
 echo "E2E_GREEN"

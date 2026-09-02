@@ -40,6 +40,10 @@ func main() {
 		must(cmdLink(ctx, args[1:]))
 	case "bulk":
 		must(cmdBulk(ctx, args[1:]))
+	case "export":
+		must(cmdExport(ctx, args[1:]))
+	case "import":
+		must(cmdImport(ctx, args[1:]))
 	case "search":
 		must(cmdSearch(ctx, args[1:]))
 	case "dir":

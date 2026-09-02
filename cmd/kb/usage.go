@@ -15,6 +15,8 @@ func usage() {
 		"  kb link resolve <slug> [--at 快照] [--json]  # 解析链接 slug:全路径精确→叶名全库唯一→歧义报错\n" +
 		"  kb search <query...> [--at 快照] [-n N] [--json]  # 全文检索(BM25,结果确定性可复现)\n" +
 		"  kb bulk import <file.jsonl> [-m msg]  # 批量导入(单快照;JSONL 每行 path/title/tags/body)\n" +
+		"  kb export md <目录> [--at 快照] [--force]  # 导出当前分支(或历史快照)为镜像 .md 文件树\n" +
+		"  kb import md <目录> [-m msg]  # 递归导入 .md 目录(front-matter:title 必填,tags 逗号分隔)\n" +
 		"  kb dir add <目录> [-m msg]         # 建目录(mkdir -p 语义)\n" +
 		"  kb dir ls [目录] [--json]          # 列出直接子项(目录在前)\n" +
 		"  kb dir rm <目录> [-m msg] [--force] # 删目录;非空需 --force 递归\n" +

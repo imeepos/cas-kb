@@ -2,7 +2,7 @@
 
 每个里程碑交付可独立验收的能力;验收标准即测试用例的来源。
 
-> 状态:M1–M3.10 已交付并通过验收(M3.10=存储后端可插拔:SQLite 默认、PostgreSQL 可选);M3.11=dir tree 全库视图(展示层增量)已交付;M4 CLI 部分已交付(倒排索引纳入快照 + kb search / link resolve / index rebuild,schema v5);HTTP API 未开工。
+> 状态:M1–M3.10 已交付并通过验收(M3.10=存储后端可插拔:SQLite 默认、PostgreSQL 可选);M3.11=dir tree 全库视图(展示层增量)已交付;M4 CLI 部分已交付(倒排索引纳入快照 + kb search / link resolve / index rebuild,schema v5);M3.12=Markdown 互操作(export md / import md,增量)已交付;HTTP API 未开工。
 
 ## M1 存储内核
 
@@ -128,6 +128,18 @@
 - 文档同步:DESIGN §4.6、usage 帮助文本、本节
 
 **状态**:已交付(CLI + 单元测试)。
+
+## M3.12 Markdown 互操作(增量)
+
+**范围**:纯互操作层增量,无数据模型与对象格式变更——CLI `kb export md <目录> [--at 快照] [--force]`(当前分支或历史快照的全部条目导出为镜像 .md 文件树:条目路径去 .md 为文件、目录为子目录;目标文件已存在时整批拒绝并提示 --force,绝不部分写入)与 `kb import md <目录> [-m msg]`(递归扫描 .md:相对路径去 .md 为条目路径;非 .md 文件、非法路径(`a//b`、`.`、`..` 等)、中间段是条目、front-matter 缺 title 均响亮列出问题文件并整批拒绝;title 必填、tags 可选逗号分隔,正文为 front-matter 之后原文字节;全部解析成功后走 BulkImport 等价路径:一次提交 + 一次索引增量);repo 层 Markdown 编解码(EncodeMdNote/DecodeMdNote)与导入导出契约(ExportMarkdown/ImportMarkdown,ListNotesAt 历史快照读取);roundtrip:export(import(X)) 与 X 逐字节一致、import(export(库)) 写回后 diff 零变更(地址不变)。两命令受 -p/KB_PROJECT 项目作用域约束。
+
+**验收标准**
+- 编解码往返逐字节一致(标题/标签/正文;无标签省略 tags 行、空正文、末行无换行等边界)——`TestMarkdownEncodeDecodeRoundtrip`;front-matter 违规响亮报错——`TestMarkdownDecodeErrors`
+- import(export(库)) 写回后 diff 零变更、条目地址不变:未改动库重导不产生新快照;改动/删除后重导逐字节还原(时间源递增下仍成立)——`TestMarkdownRepoRoundtrip`;空导入报错、空库导出 0 条——`TestMarkdownImportEmpty`
+- CLI 集成:export → 改库 → import → diff 断言零变更 → 再次 export 与首次逐字节一致(--at 历史快照导出同样一致;内容未变再导入无新快照)——`TestMarkdownCLIExportImportRoundtrip`;已存在文件整批拒绝并提示 --force、--force 覆盖——`TestMarkdownCLIExportForce`;问题文件(缺 title、非 .md、中间段是条目)响亮列出且整批不写入——`TestMarkdownCLIImportProblems`;非法相对路径(`a//b.md`、`./a.md`、`.md` 等)拒绝——`TestMarkdownEntryPathValidation`
+- e2e markdown 段:导入 → 检索命中 → 导出 → roundtrip 断言(专用项目内 `diff -r` 逐字节一致、重复导出拒绝、改库后重导还原、再导入零变更、问题文件整批拒绝)——`scripts/e2e.sh`
+
+**状态**:已交付(repo 单元 + CLI 集成 + e2e 全绿;`go test ./internal/repo/ ./cmd/kb/ -run Markdown -v`)。
 
 ## M4 检索与集成
 

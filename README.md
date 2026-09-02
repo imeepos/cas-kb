@@ -35,6 +35,7 @@
 - **M3.11 dir tree 全库视图**:不带 `-p` 时渲染全库树(项目为顶层节点,逐项目挂默认分支树)
 - **M4 CLI 检索**(schema v5):BM25 全文检索 `kb search`(字段加权 标题3/标签2/正文1,结果确定性可复现,`--at` 历史快照检索);倒排索引纳入快照(indexroot/indexshard,结构共享式增量);`kb index rebuild` 全量重建;`kb link resolve` 链接解析
 - **批量导入**:`kb bulk import <jsonl>` N 条笔记一次提交 + 一次索引增量(2000 条由逐条 103s/6.7GB 降至 350ms/11MB)
+- **Markdown 互操作**:`kb export md <目录>` 当前分支或 `--at` 历史快照导出为镜像 .md 文件树(front-matter + 正文原文字节,已存在整批拒绝、`--force` 覆盖);`kb import md <目录>` 递归导入(title 必填、tags 逗号分隔,问题文件整批响亮拒绝,一次提交一次索引增量);roundtrip 逐字节一致,写回零变更(地址不变)
 - **暂存工作流**:`note set/rm`、`dir rm --stage` 累积到暂存分支(单条成本恒定),`kb stage` 查看清单、`kb commit` 合入、`kb commit --abort` 丢弃
 - **存储透明压缩**:SQLite 索引对象写入 gzip、读取透明解压,库体积 −60%;`KB_COMPRESS=off` 可关
 
@@ -89,6 +90,11 @@
     ./kb project create notes --desc "另一个知识域"
     ./kb project ls --json               # 机器可读项目清单(AI 选用入口)
     ./kb -p notes note set idea --title 点子 --body "另一个项目里"
+
+与编辑器/Obsidian 互通(Markdown 互操作):
+
+    ./kb export md ~/notes               # 当前分支全部条目 → 镜像 .md 文件树(--at 可读历史快照)
+    ./kb import md ~/notes               # 递归导入 .md 目录(front-matter:title/tags;一次提交一次索引增量)
 
 ## 开发与测试
 
