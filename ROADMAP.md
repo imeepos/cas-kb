@@ -2,7 +2,7 @@
 
 每个里程碑交付可独立验收的能力;验收标准即测试用例的来源。
 
-> 状态:M1–M3.10 已交付并通过验收(M3.10=存储后端可插拔:SQLite 默认、PostgreSQL 可选);M3.11=dir tree 全库视图(展示层增量)已交付;M4 CLI 部分已交付(倒排索引纳入快照 + kb search / link resolve / index rebuild,schema v5);M3.12=Markdown 互操作(export md / import md,增量)已交付;M4 增补=gc --keep-last K 历史保留水位(历史索引精简)已交付;M4 收尾=只读 HTTP API(kb serve,DESIGN §8.5)已交付;M4.1=写入型 HTTP API(kb serve 写端点,令牌鉴权,DESIGN §8.6)已交付;M4.2=检索片段高亮(纯展示层增量:--snippet / snippet=1,DESIGN §7.1)已交付。
+> 状态:M1–M3.10 已交付并通过验收(M3.10=存储后端可插拔:SQLite 默认、PostgreSQL 可选);M3.11=dir tree 全库视图(展示层增量)已交付;M4 CLI 部分已交付(倒排索引纳入快照 + kb search / link resolve / index rebuild,schema v5);M3.12=Markdown 互操作(export md / import md,增量)已交付;M4 增补=gc --keep-last K 历史保留水位(历史索引精简)已交付;M4 收尾=只读 HTTP API(kb serve,DESIGN §8.5)已交付;M4.1=写入型 HTTP API(kb serve 写端点,令牌鉴权,DESIGN §8.6)已交付;M4.2=检索片段高亮(纯展示层增量:--snippet / snippet=1,DESIGN §7.1)已交付;M5=三方合并(pull --merge,repo 内核 A 批次 + CLI/中间态/收束 B 批次,DESIGN §6.3)已交付。
 
 ## M1 存储内核
 
@@ -198,3 +198,24 @@
 - `./scripts/e2e.sh`
 
 **状态**:已交付(internal/view 七个 TestSnippet* + cmd/kb TestSearchSnippetCLI + internal/server TestServeSearchSnippet + TestServeCLIParity 扩展 + e2e M4.2 段全绿)。
+
+## M5 三方合并(pull --merge)
+
+**范围**(两批次,批次 A 为批次 B 前置;调研 docs/research/merge-design.md §2/§4/§5):批次 A(repo 内核,已交付)——LCA 基准计算(沿 parents 链 BFS,不信任 Time;无共同祖先拒绝;多候选拒绝 + 显式指定)、条目级三方树合并纯函数(判定表全类别、Merkle 剪枝、目录递归合成)、冲突结构 {path, kind, base, ours, theirs}、零冲突落库(合并快照 Parents=[ours, theirs] + 索引增量)。批次 B(CLI/中间态/收束,本批)——`kb pull --merge`(与 `--force` 互斥;判定矩阵含「本地领先 → 已更新」修正)、`<branch>-merge` 中间态分支(基线快照 = 自动合并树,冲突条目 ours 占位)+ meta 键(单键 JSON:base/theirs/ours + 冲突清单)、冲突清单输出(文本逐行 路径/类别/三侧短标识,退出码非零)、`kb merge --continue [-m]` / `kb merge --abort` 收束、冻结纪律(合并中态拒绝 note/dir/bulk/reset/pull/index rebuild/普通 commit;--stage 升格为裁决写入 -merge 视图;kb stage 展示裁决清单)、`kb log` 合并行追加第二亲短标识、usage 与文档四处同步。
+
+**验收标准**(与测试一一对应)
+
+- 判定表逐类、LCA、Merkle 剪枝、双亲快照兼容性(fsck/GC/backup/pull/reset)、本地领先空操作、冲突清单完整性——批次 A `internal/repo` TestMerge*(merge_test.go)
+- 中间态建立与读回(meta 键 + main-merge 基线快照形态)、冻结守卫覆盖 note set/rm、dir add/rm、bulk、reset、index rebuild、commit、pull(含 --force)、--stage 裁决写入 -merge 视图(不触碰 -stage)、--continue 双亲合并快照 + 索引 + 中间态清理 + 检索命中、零裁决拒绝、--abort 放弃裁决数与指针不动、无共同历史不建态、已有中间态再发起拒绝、删改对撞裁决闭环——`internal/repo` TestMergeState*(mergestate_test.go)
+- pull --merge 零冲突一步完成(冲突 0 条 + 合并快照输出 + fsck + 双侧检索)、冲突中间态(清单字段/退出码非零/指针不动)、--abort(中间态清理 + 回到合并前 + 无中间态指引)、--continue(裁决稿可见 + 双亲 log 行 + 检索 + fsck + 分支清理)、--force/--merge 互斥、log 双亲展示(两库头短标识无序对)、冻结提示(直接写/pull/commit 拒绝且读不受限)——`cmd/kb` TestMergeCLI*(merge_cli_test.go)
+- e2e 全流程(两库互 pull):共同基点 → 零冲突双亲落库断言 → 冲突(清单 + 退出码 + 指针不动)→ 无旗标 pull 拒绝文案含 --merge 指引 → 冻结 → --abort → 再走 --continue 裁决闭环(检索命中 + fsck)→ 互斥——`scripts/e2e.sh` 合并段
+- store 契约:MetaDelete(SQLite/PG 双后端,幂等)——`internal/store` TestMeta*
+
+**验收命令**
+
+- `go test ./internal/repo/ -run "Merge" -v`
+- `go test ./cmd/kb/ -run "MergeCLI" -v`
+- `go test ./internal/store/ -run TestMeta -v`
+- `./scripts/e2e.sh`(新增 merge 段)
+
+**状态**:已交付(A 批次:internal/repo/merge.go + TestMerge*;B 批次:internal/repo/mergestate.go + TestMergeState*、cmd/kb pull --merge / merge --continue|--abort / stage 合并态 / log 双亲 + TestMergeCLI*、scripts/e2e.sh 合并段全绿)。

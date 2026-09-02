@@ -21,7 +21,7 @@
 - 全库唯一的可变状态 = 分支指针表(`branches: (项目, 名字) → 快照地址`)
 - 版本历史 = 快照 DAG;同步 = 比较哈希、只传缺失对象;完整性 = 地址即校验和
 
-## 已交付能力(M1–M4 CLI)
+## 已交付能力(M1–M5 CLI)
 
 - **M1 存储内核**:hash / object / store 三层 + 迁移与版本门禁(`kb init`)
 - **M2 条目与版本**:`kb note set|get|rm|ls`、`kb log`、`kb diff`(支持分支名、快照地址或日志短标识)
@@ -40,6 +40,7 @@
 - **存储透明压缩**:SQLite 索引对象写入 gzip、读取透明解压,库体积 −60%;`KB_COMPRESS=off` 可关
 - **只读 HTTP API**(M4 收尾,DESIGN §8.5):`kb serve` 默认只绑 127.0.0.1:8787,暴露 `/healthz` 与 `/api/v1/{projects,tree,note,search,log,diff}`(全部 GET);JSON 与 CLI `--json` 同一份契约(internal/view,TestServeCLIParity 逐字段钉死)
 - **写入型 HTTP API**(M4.1,DESIGN §8.6):`POST/DELETE /api/v1/note` 等价 `kb note set/rm`(复用 repo.SetNote/RemoveNote);`--token <值>` 或 `KB_SERVE_TOKEN` 启用写端点(内存常量时间比较、不写日志不回显),**未配置令牌时保持纯只读(写端点一律 403)**;锁忙返回 503 并提示稍后重试或改用 CLI;`kb note get` 补 `--json`(TestServeWriteCLIParity 逐字段钉死)
+- **M5 三方合并**:`kb pull --merge`(与 `--force` 互斥)分叉时按最近公共祖先做条目级三方合并(单侧变取单侧、双侧同变自动合、Merkle 剪枝;不做行级合并)——零冲突直接落双亲合并快照(历史双侧可达),冲突全有或全无:`<branch>-merge` 中间态 + 冲突清单(退出码非零);合并中态冻结该分支直接写,`note set/rm --stage` 升格为裁决,`kb merge --continue` 落合并快照收束、`kb merge --abort` 回到合并前;`pull` 本地领先修正为「已是最新」空操作
 
 ## 快速开始
 
@@ -82,6 +83,15 @@
     ./kb diff <短标识> main              # 按全路径输出 A/D/M;目录间移动 = 旧路径 D + 新路径 A
     ./kb note get go/concurrency/channel --at <短标识>   # 历史版本
     ./kb reset <短标识>                  # 指针回拨,放弃其后提交
+
+多机同步与三方合并(两台机器互为远端,分叉不再只有 --force 一条路):
+
+    ./kb pull sqlite:/data/other/caskb.db --merge   # 分叉时三方合并;零冲突直接落双亲合并快照
+    # 冲突时退出码非零,输出冲突清单并建 <branch>-merge 中间态(原分支指针不动)
+    ./kb stage                            # 合并中态:查看冲突清单与裁决进度
+    ./kb note set task --title 通道 --body "合并稿" --stage   # 逐条裁决(或 note rm --stage 接受删除)
+    ./kb merge --continue -m "merge theirs:裁决说明"           # 收束:双亲合并快照 + 清理中间态
+    ./kb merge --abort                    # 或放弃:删中间态,回到合并前
 
 目录删除与运维:
 
