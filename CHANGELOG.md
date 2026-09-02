@@ -3,6 +3,12 @@
 本文件记录面向用户的显著变更;格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 升级操作指引见 [docs/upgrade.md](docs/upgrade.md)。
 
+## Unreleased
+
+### Added
+- 合并状态查询端点 `GET /api/v1/merge-state`(T48,DESIGN §8.5):`?project=&branch=` 省略时取 serve 进程作用域(`KB_PROJECT`/`-p` 与默认分支);响应含 `project/branch/state/can_continue/can_abort/base/theirs/ours/conflicts/conflict_count/merged_branch`,`state ∈ idle|merging`——无合并中态返回 200 + `state:"idle"`(轮询稳态:事实字段 null、conflicts 空数组、两布尔 false),合并态事实字段取合并中间态 meta 键,conflicts 与 CLI 冲突清单同一份契约(internal/view);项目或分支不存在 404,参数空白 400,非 GET 405
+- `kb stage --json`:输出与 `GET /api/v1/merge-state` 同构的合并状态行(internal/view 一份契约两条出口,TestServeMergeStateParity 逐字段钉死);文本模式行为不变;merge-design §4-9「最小只读暴露」开放问题闭合
+
 ## v0.6.1 - 2026-09-02
 
 ### Added

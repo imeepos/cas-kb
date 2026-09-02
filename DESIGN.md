@@ -372,9 +372,10 @@ cas-kb/
 | `/api/v1/search` | `q` 必填,`at`、`limit`(正整数) | BM25 检索,`search --json` 同构;limit 只截断不重排 | 缺 q / limit 非法 400;at 不存在 404 |
 | `/api/v1/log` | `limit`(正整数) | 快照链(最新在前):id/time/message/parents,短标识与 CLI 同长 | limit 非法 400 |
 | `/api/v1/diff` | `from`、`to` 必填 | A/D/M 按全路径,`diff --json` 同构 | 缺参 400;引用不存在 404;歧义 400 |
+| `/api/v1/merge-state` | `project`、`branch`(省略=serve 作用域与默认分支) | 合并中间态查询(T48),`kb stage --json` 同构:`state ∈ idle\|merging` + 派生布尔 `can_continue`/`can_abort` + 事实字段 `base`/`theirs`/`ours`/`conflicts[]`/`conflict_count`/`merged_branch`;idle=200 轮询稳态(事实字段 null、conflicts 空数组、两布尔 false),合并态事实取中间态 meta 键,conflicts 与 CLI 冲突清单同契约 | 项目/分支不存在 404;参数空白 400 |
 
-- **只读纪律(§8.6 增量前)**:`/healthz` 与 `/api/v1/{projects,tree,note,search,log,diff}` 全部只读,非 GET(含 POST)一律 405 + `Allow: GET`;未知路径 404;错误响应一律 `{"error":"…"}`(400 参数问题 / 404 目标不存在 / 500 其余)。§8.6 之后写路径有 CLI 与写入型 HTTP API 两条,读端点纪律不变
-- **契约一致性声明**:JSON 行契约集中在 `internal/view`(字段名、字段序、摘要与短标识派生规则一份实现),CLI `--json` 与 `/api/v1/*` 共用;`cmd/kb` 的 `TestServeCLIParity` 在同一临时库上对 search(含多词、`--at`、limit)、projects、diff 逐字段断言两条出口相等,顺序亦必须相等
+- **只读纪律(§8.6 增量前)**:`/healthz` 与 `/api/v1/{projects,tree,note,search,log,diff,merge-state}` 全部只读,非 GET(含 POST)一律 405 + `Allow: GET`;未知路径 404;错误响应一律 `{"error":"…"}`(400 参数问题 / 404 目标不存在 / 500 其余)。§8.6 之后写路径有 CLI 与写入型 HTTP API 两条,读端点纪律不变
+- **契约一致性声明**:JSON 行契约集中在 `internal/view`(字段名、字段序、摘要与短标识派生规则一份实现),CLI `--json` 与 `/api/v1/*` 共用;`cmd/kb` 的 `TestServeCLIParity` 在同一临时库上对 search(含多词、`--at`、limit)、projects、diff 逐字段断言两条出口相等,顺序亦必须相等;`GET /api/v1/merge-state` 与 `kb stage --json` 共用 `view.MergeStateRow` 一份契约,由 `TestServeMergeStateParity` 同法钉死(T48,merge-design §4-9 开放问题闭合)
 - **安全边界**:默认只绑 `127.0.0.1`,不对外网暴露;跨机消费走 SSH 端口转发或反向代理(自行加鉴权);`--addr 127.0.0.1:0` 由内核分配端口,测试与 e2e 用其避免端口冲突
 
 ### 8.6 写入型 API 与令牌鉴权(kb serve 写端点,M4.1 增量)
