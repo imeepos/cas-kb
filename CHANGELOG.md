@@ -3,6 +3,11 @@
 本文件记录面向用户的显著变更;格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 升级操作指引见 [docs/upgrade.md](docs/upgrade.md)。
 
+## Unreleased
+
+### Added
+- 检索片段高亮(M4.2,纯展示层增量,DESIGN §7.1):`kb search --snippet` 文本模式在每条命中行下追加缩进片段、命中词元以【】包裹;`kb search --json --snippet` 与 `GET /api/v1/search?snippet=1` 增可选字段 `"snippet"`(缺省不带,旧消费者零破坏);确定性窗口算法(任一查询词元首次出现为中心,目标 80 字符,截断边缘吸附标点/空白,按 rune 切不劈多字节字符;CJK 2-gram 标记扩展回完整词源,英文按词边界);评分/排序/命中集合零变化
+
 ## v0.5.0 - 2026-09-02
 
 ### Added

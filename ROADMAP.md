@@ -2,7 +2,7 @@
 
 每个里程碑交付可独立验收的能力;验收标准即测试用例的来源。
 
-> 状态:M1–M3.10 已交付并通过验收(M3.10=存储后端可插拔:SQLite 默认、PostgreSQL 可选);M3.11=dir tree 全库视图(展示层增量)已交付;M4 CLI 部分已交付(倒排索引纳入快照 + kb search / link resolve / index rebuild,schema v5);M3.12=Markdown 互操作(export md / import md,增量)已交付;M4 增补=gc --keep-last K 历史保留水位(历史索引精简)已交付;M4 收尾=只读 HTTP API(kb serve,DESIGN §8.5)已交付;M4.1=写入型 HTTP API(kb serve 写端点,令牌鉴权,DESIGN §8.6)已交付。
+> 状态:M1–M3.10 已交付并通过验收(M3.10=存储后端可插拔:SQLite 默认、PostgreSQL 可选);M3.11=dir tree 全库视图(展示层增量)已交付;M4 CLI 部分已交付(倒排索引纳入快照 + kb search / link resolve / index rebuild,schema v5);M3.12=Markdown 互操作(export md / import md,增量)已交付;M4 增补=gc --keep-last K 历史保留水位(历史索引精简)已交付;M4 收尾=只读 HTTP API(kb serve,DESIGN §8.5)已交付;M4.1=写入型 HTTP API(kb serve 写端点,令牌鉴权,DESIGN §8.6)已交付;M4.2=检索片段高亮(纯展示层增量:--snippet / snippet=1,DESIGN §7.1)已交付。
 
 ## M1 存储内核
 
@@ -177,3 +177,24 @@
 - `./scripts/e2e.sh`
 
 **状态**:已交付(令牌鉴权 + 两个写端点 + 503 语义 + note get --json;internal/server 六个 TestServeWrite* + cmd/kb TestServeWriteCLIParity + e2e 写 API 段全绿)。
+
+## M4.2 检索片段高亮(增量)
+
+**范围**:BM25 检索命中附带「命中片段」——纯展示层增量,**评分/排序/命中集合零变化**。`kb search` 增布尔旗标 `--snippet`(文本模式命中行下追加 4 空格缩进片段行,命中词元以【】包裹;`--json` 增可选字段 `snippet`,omitempty,缺省不带,旧消费者零破坏);`GET /api/v1/search` 增可选查询参数 `snippet=1`(仅字面 1 生效,语义与 CLI 相同,JSON 同字段);确定性窗口算法:任一查询词元首次出现为中心、目标 80 rune、截断边缘向内回望 20 rune 吸附标点/空白、rune 对齐不劈多字节字符;CJK 2-gram 标记扩展回完整词源(「知识库」→【知识库】),英文按词边界(chan 不命中 channel),孤字词元仅命中段长 1 的孤字——与索引分词同口径;无任何词元命中 body(仅标题命中)时取开头窗口、无标记(二选一钉死);文档四处同步(DESIGN §7.1 / 本节 / README / CHANGELOG)。
+
+**验收标准**(与测试一一对应)
+- 算法单测(名字含 Snippet):中英混合、英文词边界、CJK 词源扩展、标题命中钉死、窗口边缘吸附、rune 边界(不劈多字节)、分词同口径、确定性逐字节一致——internal/view TestSnippet*(含 TestSnippetNoBodyHit)
+- CLI:文本片段行与【】标记、--json snippet 字段存在/缺省双向断言、确定性——cmd/kb TestSearchSnippetCLI
+- 排序不变红线:同一查询带/不带 --snippet 的结果序列(路径+分数)完全一致——TestSearchSnippetCLI 与 TestServeSearchSnippet 双侧断言
+- API:snippet=1 附片段且标记词元、缺省无字段、snippet=0/true 视为缺省、响应逐字节确定——internal/server TestServeSearchSnippet
+- CLI/API parity 含 snippet 字段——TestServeCLIParity 扩展(assertSearchParity 逐字段比较 snippet)
+- e2e snippet 段:文本/缩进/排序不变/--json 字段/缺省无字段/serve snippet=1——scripts/e2e.sh
+
+**验收命令**
+- `go test ./internal/view/ -run TestSnippet -v`
+- `go test ./cmd/kb/ -run TestSearchSnippet -v`
+- `go test ./internal/server/ -run TestServeSearchSnippet -v`
+- `go test ./cmd/kb/ -run TestServeCLIParity -v`
+- `./scripts/e2e.sh`
+
+**状态**:已交付(internal/view 七个 TestSnippet* + cmd/kb TestSearchSnippetCLI + internal/server TestServeSearchSnippet + TestServeCLIParity 扩展 + e2e M4.2 段全绿)。
