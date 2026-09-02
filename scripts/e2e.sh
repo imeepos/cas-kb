@@ -116,5 +116,12 @@ step "index rebuild";        out=$($KB -p alpha index rebuild); has "index sha25
 step "rebuild 后检索可用";    out=$($KB -p alpha search BM25); has "go/searching/index" "$out"
 step "fsck 通过(索引可达)";   has "完整,无问题" "$($KB fsck)"
 
+# ---- 批量导入(压测根治:单快照+一次索引增量)----
+step "生成 bulk 语料";        for i in $(seq 1 50); do printf '{"path":"b%d/n%d","title":"B%d channel","tags":["bulk"],"body":"第 %d 条 bulk channel 内容"}\n' "$((i%4))" "$i" "$i" "$i"; done > bulk.jsonl
+step "bulk import 50 条";     out=$($KB -p alpha bulk import bulk.jsonl -m "bulk 50"); has "bulk import 50 条" "$out"
+step "bulk 后检索命中";        out=$($KB -p alpha search channel -n 5); has "channel" "$out"
+step "bulk 后条目数";         n=$($KB -p alpha note ls | wc -l | tr -d ' '); [ "$n" -ge 51 ] || { echo "断言失败: 条目数 $n < 51"; exit 1; }
+step "清理 bulk 语料";        rm -f bulk.jsonl
+
 step "gc + fsck";            out=$($KB gc); has "已备份" "$out"; has "完整,无问题" "$($KB fsck)"
 echo "E2E_GREEN"
