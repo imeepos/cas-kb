@@ -1,5 +1,13 @@
 # 升级指南
 
+## 升级到 v0.7.0(库 schema 不变,仍为 v5)
+
+v0.7.0 **没有数据模型变更**,直接替换二进制即可(`kb update --yes`);v0.6.x 库打开即用,`kb fsck` 应通过。新增能力均为可选增量:
+
+- 健康自检:`kb doctor`(一条命令全库体检;`--json` 供巡检脚本)
+- 合并状态查询:`GET /api/v1/merge-state`(Agent 轮询合并中间态;`kb stage --json` 同构)
+- 演练回归脚本:`scripts/drill-multi.sh` / `scripts/drill-serve.sh`(季度或发版前真机回归)
+
 ## 升级到 v0.6.1(库 schema 不变,仍为 v5)
 
 v0.6.1 为补丁版:**没有数据模型变更**,直接替换二进制即可(`kb update --yes`)。

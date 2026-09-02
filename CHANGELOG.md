@@ -3,7 +3,7 @@
 本文件记录面向用户的显著变更;格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 升级操作指引见 [docs/upgrade.md](docs/upgrade.md)。
 
-## Unreleased
+## v0.7.0 - 2026-09-03
 
 ### Added
 - 健康自检 `kb doctor`(T49,DESIGN §8.7):`kb doctor [--json] [--check <name>…] [-l|--list-checks] [-p 项目]` 一站拉通库完整性/版本/配置/serve 可达性;六检查项(storage/fsck/version/config/gc-protect/serve)全部复用现成能力(fsck/version//healthz/config 核对),逐项输出「ok/warn/fail + 人话 + 可行动修复建议」,汇总行 `doctor: N ok, M warn, K fail`;**有 fail 退出码 1,仅 warn 不拦**(brew doctor 式克制;悬垂/未达对象按 git fsck --dangling 分级为 warn,serve 未运行是 ok 不是错);`--json` 走 internal/view.DoctorRow 契约;输出绝不回显连接串凭据段与令牌值
