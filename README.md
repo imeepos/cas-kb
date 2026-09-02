@@ -47,6 +47,8 @@
     ./kb init                            # 默认 SQLite:库文件 ~/.local/share/caskb/caskb.db(schema v5;旧版本库会拒绝并提示重建)
     ./kb --help                          # 完整命令清单
 
+> 运维与安全(部署形态、令牌管理、备份维护、systemd/launchd 示例)见 [docs/serve.md](docs/serve.md)。
+
     # 可选:切换 PostgreSQL 后端(生产 102 主机或本地任意可达实例)
     # export KB_DSN=postgres://postgres:postgres@127.0.0.1:5432/caskb?sslmode=disable
 
