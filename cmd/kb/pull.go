@@ -107,5 +107,11 @@ func cmdPull(ctx context.Context, args []string) error {
 	fmt.Printf("已同步 %d 个对象(merge)\n", res.Transferred)
 	fmt.Printf("自动合并 %d 条;冲突 0 条\n", res.AutoMerged)
 	fmt.Printf("合并快照 %s(parents %s %s)\n", res.Snap, shortAddr(res.Ours), shortAddr(res.Theirs))
+	if res.Base == "" {
+		// T47-D 冷启动锚点(调研 §2.3-2 第 3 步「收敛」):空基线合并成功即
+		// 两库首次建立共同历史(与冲突清单「(空基线)」标注同一判定信号),
+		// 此后同步恢复正常判定语义,对端 pull 走 fast-forward,无需再带旗标
+		fmt.Println("冷启动完成:两侧历史已建立共同祖先,后续 pull 无需 --allow-unrelated")
+	}
 	return nil
 }

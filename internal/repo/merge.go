@@ -48,7 +48,8 @@ type MergeConflict struct {
 // ErrMergeNoCommonHistory 表示两分支头没有共同祖先(如两库各自 init),
 // v1 默认拒绝三方合并。T44 D2:文案随空基线合并分流——指引 --force 覆盖,
 // 或显式 --merge --allow-unrelated 做空基线合并(修复与分叉指引的断裂)。
-var ErrMergeNoCommonHistory = errors.New("repo: 两库无共同历史,无法三方合并(--force 覆盖,或 --merge --allow-unrelated 做空基线合并)")
+// T47-D:两条出路各配一句代价说明(调研 §2.3-3),与 pull 侧文案同口径。
+var ErrMergeNoCommonHistory = errors.New("repo: 两库无共同历史,无法三方合并(--force 覆盖:丢弃本地独有提交;或 --merge --allow-unrelated 做空基线合并:两侧新增互不冲突即全取)")
 
 // ErrMergeMultipleBases 表示检出多个最近公共祖先(蟹状历史)。
 // v1 策略(调研 §2.2 方案甲):响亮拒绝并列出全部候选,由调用方以

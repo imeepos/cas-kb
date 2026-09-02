@@ -94,6 +94,13 @@
     ./kb merge --continue -m "merge theirs:裁决说明"           # 收束:双亲合并快照 + 清理中间态
     ./kb merge --abort                    # 或放弃:删中间态,回到合并前
 
+冷启动(两库各自 init,无共同历史)三步——两台机器各自生长过、首次同步时走这里(独立历史是正常起点,不是错误):
+
+    # 第 1 步 自证:两台机器各自 kb init + 写入,各自形成独立历史
+    # 第 2 步 对拉:任意一台执行下面这句(先 pull 的一台合并后,对端再 pull 即走 fast-forward——两次 pull 各一次,第二台不再需要旗标)
+    ./kb pull sqlite:/data/other/caskb.db --merge --allow-unrelated   # 空基线合并:两侧新增互不冲突即全取
+    # 第 3 步 收敛:零冲突直接落双亲合并快照,输出提示「冷启动完成:两侧历史已建立共同祖先,后续 pull 无需 --allow-unrelated」,此后恢复正常同步语义
+
 目录删除与运维:
 
     ./kb dir rm go                       # 非空目录 → 拒绝并提示 --force

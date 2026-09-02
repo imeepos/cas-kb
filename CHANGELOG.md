@@ -9,6 +9,10 @@
 - 健康自检 `kb doctor`(T49,DESIGN §8.7):`kb doctor [--json] [--check <name>…] [-l|--list-checks] [-p 项目]` 一站拉通库完整性/版本/配置/serve 可达性;六检查项(storage/fsck/version/config/gc-protect/serve)全部复用现成能力(fsck/version//healthz/config 核对),逐项输出「ok/warn/fail + 人话 + 可行动修复建议」,汇总行 `doctor: N ok, M warn, K fail`;**有 fail 退出码 1,仅 warn 不拦**(brew doctor 式克制;悬垂/未达对象按 git fsck --dangling 分级为 warn,serve 未运行是 ok 不是错);`--json` 走 internal/view.DoctorRow 契约;输出绝不回显连接串凭据段与令牌值
 - 合并状态查询端点 `GET /api/v1/merge-state`(T48,DESIGN §8.5):`?project=&branch=` 省略时取 serve 进程作用域(`KB_PROJECT`/`-p` 与默认分支);响应含 `project/branch/state/can_continue/can_abort/base/theirs/ours/conflicts/conflict_count/merged_branch`,`state ∈ idle|merging`——无合并中态返回 200 + `state:"idle"`(轮询稳态:事实字段 null、conflicts 空数组、两布尔 false),合并态事实字段取合并中间态 meta 键,conflicts 与 CLI 冲突清单同一份契约(internal/view);项目或分支不存在 404,参数空白 400,非 GET 405
 - `kb stage --json`:输出与 `GET /api/v1/merge-state` 同构的合并状态行(internal/view 一份契约两条出口,TestServeMergeStateParity 逐字段钉死);文本模式行为不变;merge-design §4-9「最小只读暴露」开放问题闭合
+- 冷启动完成提示行(T47-D,调研 §2.3):`pull --merge --allow-unrelated` 空基线合并成功后追加输出「冷启动完成:两侧历史已建立共同祖先,后续 pull 无需 --allow-unrelated」(仅冷启动合并出现,普通三方合并不受影响);README「多机同步」段增冷启动三步指引(自证→对拉→收敛),docs/serve.md 多机部署处交叉引用
+
+### Changed
+- `pull` 无共同历史报错文案(T47-D):两条出路各配一句代价说明——`--force 覆盖:丢弃本地独有提交` vs `--merge --allow-unrelated 做空基线合并:两侧新增互不冲突即全取`,把取舍摆到报错现场(判定行为不变,仅文案)
 
 ## v0.6.1 - 2026-09-02
 
