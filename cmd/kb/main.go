@@ -46,6 +46,10 @@ func main() {
 		must(cmdDir(ctx, args[1:]))
 	case "log":
 		must(cmdLog(ctx, args[1:]))
+	case "commit":
+		must(cmdCommit(ctx, args[1:]))
+	case "stage":
+		must(cmdStage(ctx, args[1:]))
 	case "diff":
 		must(cmdDiff(ctx, args[1:]))
 	case "pull":

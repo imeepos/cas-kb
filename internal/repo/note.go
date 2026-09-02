@@ -288,15 +288,23 @@ func (r *Repo) commitTree(ctx context.Context, t *object.Tree, msg string, hasHe
 			return "", err
 		}
 		oldRootAddr = prev.Index
-		ot, err := r.treeAtSnapshot(ctx, head)
+		if !r.skipIndex {
+			ot, err := r.treeAtSnapshot(ctx, head)
+			if err != nil {
+				return "", err
+			}
+			oldTree = ot
+		}
+	}
+	var idxAddr hash.Address
+	if r.skipIndex {
+		idxAddr = "" // 暂存分支视图:不构建索引,检索走正式分支
+	} else {
+		var err error
+		idxAddr, err = r.updateIndex(ctx, oldRootAddr, oldTree, t)
 		if err != nil {
 			return "", err
 		}
-		oldTree = ot
-	}
-	idxAddr, err := r.updateIndex(ctx, oldRootAddr, oldTree, t)
-	if err != nil {
-		return "", err
 	}
 	treeAddr, err := r.putTree(ctx, t)
 	if err != nil {

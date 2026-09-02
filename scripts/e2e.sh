@@ -123,5 +123,15 @@ step "bulk 后检索命中";        out=$($KB -p alpha search channel -n 5); has
 step "bulk 后条目数";         n=$($KB -p alpha note ls | wc -l | tr -d ' '); [ "$n" -ge 51 ] || { echo "断言失败: 条目数 $n < 51"; exit 1; }
 step "清理 bulk 语料";        rm -f bulk.jsonl
 
+# ---- 暂存工作流(stage→commit,借鉴 git)----
+step "stage 两条";           $KB -p alpha note set st/a --title SA --body sa --stage >/dev/null; $KB -p alpha note set st/b --title SB --body sb --stage >/dev/null
+step "暂存对 main 不可见";     if echo "$($KB -p alpha note ls)" | grep -qF "st/a"; then echo "断言失败: 暂存不应出现在 main"; exit 1; fi
+step "stage status";         out=$($KB -p alpha stage); has "A  st/a" "$out"; has "A  st/b" "$out"
+step "commit 暂存";          out=$($KB -p alpha commit -m "stage commit"); has "已提交 2 处变更" "$out"
+step "提交后可见可检索";       has "SA" "$($KB -p alpha note get st/a)"; has "st/a" "$($KB -p alpha search sa | head -1)"
+step "再次 commit 无暂存";     has "(no staged changes)" "$($KB -p alpha commit)"
+step "abort 丢弃暂存";        $KB -p alpha note set st/z --title Z --body z --stage >/dev/null; out=$($KB -p alpha commit --abort); has "暂存已丢弃" "$out"
+if echo "$($KB -p alpha note ls)" | grep -qF "st/z"; then echo "断言失败: abort 后不应有 st/z"; exit 1; fi
+
 step "gc + fsck";            out=$($KB gc); has "已备份" "$out"; has "完整,无问题" "$($KB fsck)"
 echo "E2E_GREEN"

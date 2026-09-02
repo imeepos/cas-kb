@@ -35,7 +35,7 @@ func noteRm(ctx context.Context, r *repo.Repo, args []string) error {
 	if len(args) < 1 {
 		return fmt.Errorf("note rm: 缺少 slug")
 	}
-	f, err := parseFlags(args, map[string]bool{"-m": true, "--msg": true})
+	f, err := parseFlags(args, validRmFlags)
 	if err != nil {
 		return err
 	}
@@ -43,6 +43,13 @@ func noteRm(ctx context.Context, r *repo.Repo, args []string) error {
 		return fmt.Errorf("note rm: 缺少 slug")
 	}
 	msg := f.get("-m", f.get("--msg", "note rm"))
+	if f.has("--stage") {
+		if _, err := r.StageRemoveNote(ctx, f.pos[0], msg); err != nil {
+			return err
+		}
+		fmt.Printf("staged rm %s\n", f.pos[0])
+		return nil
+	}
 	snapAddr, err := r.RemoveNote(ctx, f.pos[0], msg)
 	if err != nil {
 		return err

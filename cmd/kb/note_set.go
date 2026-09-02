@@ -30,6 +30,14 @@ func noteSet(ctx context.Context, r *repo.Repo, args []string) error {
 		}
 	}
 	msg := f.get("-m", f.get("--msg", "note set"))
+	if f.has("--stage") {
+		_, noteAddr, err := r.StageNote(ctx, f.pos[0], in, msg)
+		if err != nil {
+			return err
+		}
+		fmt.Printf("staged %s -> %s\n", f.pos[0], noteAddr)
+		return nil
+	}
 	snapAddr, noteAddr, err := r.SetNote(ctx, f.pos[0], in, msg)
 	if err != nil {
 		return err

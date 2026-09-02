@@ -24,6 +24,9 @@ type Config struct {
 	GCProtect bool
 	// GCExportBranches 接收分支表备份;GCProtect 为 true 时必须提供。
 	GCExportBranches func(ctx context.Context, branches []store.BranchRef) error
+	// NoIndex 为 true 时,该仓库视图的提交不构建检索索引(index 置空)。
+	// 仅暂存分支视图使用;正式分支提交必须构建索引。
+	NoIndex bool
 }
 
 // Repo 是一个已打开的知识库仓库。依赖 store,不反向依赖。
@@ -34,6 +37,7 @@ type Repo struct {
 	now       func() int64
 	gcProtect bool
 	gcExport  func(ctx context.Context, branches []store.BranchRef) error
+	skipIndex bool
 }
 
 // Open 构造仓库。Store 由调用方打开并负责 Close。
@@ -51,7 +55,7 @@ func Open(s store.Store, cfg Config) *Repo {
 		now = func() int64 { return time.Now().Unix() }
 	}
 	return &Repo{st: s, project: project, branch: branch, now: now,
-		gcProtect: cfg.GCProtect, gcExport: cfg.GCExportBranches}
+		gcProtect: cfg.GCProtect, gcExport: cfg.GCExportBranches, skipIndex: cfg.NoIndex}
 }
 
 // Branch 返回当前分支名。
