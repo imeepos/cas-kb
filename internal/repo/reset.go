@@ -40,31 +40,49 @@ func (r *Repo) Reset(ctx context.Context, ref string) (ResetResult, error) {
 	return ResetResult{From: old, To: target, Abandoned: abandoned}, nil
 }
 
-// abandonedCount 沿 parents 从 from 走到 to,统计被放弃的提交数;
-// to 不在 from 的历史内时报 ErrResetTargetNotAncestor。
+// abandonedCount 统计回退放弃的提交数:「from 可达而 to 不可达」的快照数。
+// 沿全部 parents BFS(M5 起 merge 快照含两个 parents,first-parent 链走不到
+// 的 theirs 侧历史同样计入放弃集);to 不在 from 的历史内报 ErrResetTargetNotAncestor。
+// 线性历史上与旧的 first-parent 计数完全一致(|reach(from)|−|reach(to)| = 链上步数)。
 func (r *Repo) abandonedCount(ctx context.Context, from, to hash.Address) (int, error) {
 	if from == to {
 		return 0, nil
 	}
-	seen := map[string]bool{string(from): true}
-	cur := from
-	n := 0
-	for {
+	reachFrom := map[string]bool{}
+	if err := r.collectReachableFrom(ctx, from, reachFrom); err != nil {
+		return 0, err
+	}
+	if !reachFrom[string(to)] {
+		return 0, ErrResetTargetNotAncestor
+	}
+	reachTo := map[string]bool{}
+	if err := r.collectReachableFrom(ctx, to, reachTo); err != nil {
+		return 0, err
+	}
+	return len(reachFrom) - len(reachTo), nil
+}
+
+// collectReachableFrom 从 start 沿全部 parents BFS,把可达快照地址并入 seen。
+func (r *Repo) collectReachableFrom(ctx context.Context, start hash.Address, seen map[string]bool) error {
+	if seen[string(start)] {
+		return nil
+	}
+	seen[string(start)] = true
+	queue := []hash.Address{start}
+	for len(queue) > 0 {
+		cur := queue[0]
+		queue = queue[1:]
 		snap, err := r.loadSnapshot(ctx, cur)
 		if err != nil {
-			return 0, err
+			return err
 		}
-		if len(snap.Parents) == 0 {
-			return 0, ErrResetTargetNotAncestor
-		}
-		cur = snap.Parents[0]
-		if seen[string(cur)] {
-			return 0, ErrResetTargetNotAncestor
-		}
-		seen[string(cur)] = true
-		n++
-		if cur == to {
-			return n, nil
+		for _, p := range snap.Parents {
+			if seen[string(p)] {
+				continue
+			}
+			seen[string(p)] = true
+			queue = append(queue, p)
 		}
 	}
+	return nil
 }
