@@ -112,9 +112,29 @@ func (s *Server) failWrite(w http.ResponseWriter, err error) {
 		s.writeError(w, http.StatusNotFound, err)
 	case errors.Is(err, store.ErrBranchNotFound), errors.Is(err, store.ErrProjectNotFound):
 		s.writeError(w, http.StatusNotFound, err)
-	case errors.Is(err, repo.ErrEntryTypeConflict):
+	case errors.Is(err, repo.ErrEntryTypeConflict), isWritePathConflict(err):
 		s.writeError(w, http.StatusBadRequest, err)
 	default:
 		s.writeError(w, http.StatusInternalServerError, err)
 	}
+}
+
+// isWritePathConflict 识别 repo.SetNote/RemoveNote 的「客户端路径问题」错误
+// (目标是目录、中间段是条目),这些是调用方路径引发的,映射为 400。
+// repo 层这些错误是纯 fmt.Errorf(文案与 CLI 一致),按稳定文案识别,
+// 与 repo.translateBranchSetErr 的字符串识别口径一致。
+func isWritePathConflict(err error) bool {
+	if err == nil {
+		return false
+	}
+	for _, marker := range []string{
+		"是目录,不能作为条目写入", // SetNote:目标同名是目录
+		"是条目,不能作为目录",   // mutateAt:中间段是条目
+		"是目录,请用 dir rm 删除", // RemoveNote:目标是目录
+	} {
+		if strings.Contains(err.Error(), marker) {
+			return true
+		}
+	}
+	return false
 }
