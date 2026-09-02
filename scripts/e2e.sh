@@ -133,7 +133,7 @@ step "再次 commit 无暂存";     has "(no staged changes)" "$($KB -p alpha co
 step "abort 丢弃暂存";        $KB -p alpha note set st/z --title Z --body z --stage >/dev/null; out=$($KB -p alpha commit --abort); has "暂存已丢弃" "$out"
 if echo "$($KB -p alpha note ls)" | grep -qF "st/z"; then echo "断言失败: abort 后不应有 st/z"; exit 1; fi
 
-# ---- Markdown 互操作(export md / import md,DESIGN §6.8)----
+# ---- Markdown 互操作(export md / import md,DESIGN §6.9)----
 step "project create mdio";     $KB project create mdio > /dev/null
 step "markdown 源目录";          mkdir -p mds/go
 cat > mds/go/channel.md <<'MD'

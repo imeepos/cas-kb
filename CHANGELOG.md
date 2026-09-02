@@ -6,6 +6,7 @@
 ## Unreleased
 
 ### Added
+- 历史保留水位 `kb gc --keep-last K`:按分支深度只保留最近 K 个快照的检索索引,更早快照仅精简索引(数据本体/树/历史条目保留,`note get --at` 仍可用);fsck 按水位豁免其 Index 引用检查;`search --at` 命中被精简快照给可行动报错;水位持久化 meta,普通 gc 沿用
 - Markdown 互操作:`kb export md <目录>`(当前分支或 `--at` 历史快照导出为镜像 .md 文件树,front-matter + 正文原文字节,目标已存在整批拒绝并提示 `--force`)与 `kb import md <目录>`(递归扫描,问题文件整批响亮拒绝,一次提交 + 一次索引增量);roundtrip:export(import(X)) 逐字节一致,import(export(库)) 写回零变更(地址不变)
 
 ## v0.3.0 - 2026-09-02

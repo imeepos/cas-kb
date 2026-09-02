@@ -239,7 +239,7 @@ cas-kb/
 - **基线与差异**:进入暂存时落一个「基线快照」(Message=`stage base`,树=当时 main 树,Index 空);commit 计算 **基线↔暂存** 的叶子差异(这就是用户暂存的变更集,删除有显式 tombstone),应用到**当前** main 树 → 单快照 + 一次索引批量增量 → 删除暂存分支。main 在暂存期间的前进保留(同名路径以暂存为准覆盖;无三方合并)
 - **边界**:暂存内容在 commit 前对检索/历史不可见;空目录不支持暂存(`dir add --stage` 拒绝);abort 后暂存快照成孤儿由 gc 清理
 
-### 6.8 Markdown 互操作(export md / import md)
+### 6.9 Markdown 互操作(export md / import md)
 
 - **形态**:`kb export md <目录> [--at 快照] [--force]` 把当前分支(或 `--at` 指定的历史快照)的全部条目导出为镜像 .md 文件树(条目路径 `go/concurrency/channel` → 文件 `go/concurrency/channel.md`,目录 → 子目录);`kb import md <目录> [-m msg]` 递归扫描目录导入。纯互操作层增量:无数据模型与对象格式变更,两命令均受 `-p`/`KB_PROJECT` 项目作用域约束
 - **文件格式**:front-matter + 正文——首行 `---`、第二行 `title: <标题>`、有标签时一行 `tags: a, b`(逗号+空格分隔,无标签省略该行)、再一行 `---`,其后为**正文原文字节**(逐字节保真,不增删换行)

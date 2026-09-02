@@ -2,7 +2,7 @@
 
 每个里程碑交付可独立验收的能力;验收标准即测试用例的来源。
 
-> 状态:M1–M3.10 已交付并通过验收(M3.10=存储后端可插拔:SQLite 默认、PostgreSQL 可选);M3.11=dir tree 全库视图(展示层增量)已交付;M4 CLI 部分已交付(倒排索引纳入快照 + kb search / link resolve / index rebuild,schema v5);M3.12=Markdown 互操作(export md / import md,增量)已交付;HTTP API 未开工。
+> 状态:M1–M3.10 已交付并通过验收(M3.10=存储后端可插拔:SQLite 默认、PostgreSQL 可选);M3.11=dir tree 全库视图(展示层增量)已交付;M4 CLI 部分已交付(倒排索引纳入快照 + kb search / link resolve / index rebuild,schema v5);M3.12=Markdown 互操作(export md / import md,增量)已交付;M4 增补=gc --keep-last K 历史保留水位(历史索引精简)已交付;HTTP API 未开工。
 
 ## M1 存储内核
 
