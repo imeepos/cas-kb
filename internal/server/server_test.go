@@ -406,8 +406,8 @@ func TestServeDiff(t *testing.T) {
 
 func TestServeReadOnlyMethods(t *testing.T) {
 	ts := newTestServer(t)
-	// 已知端点:非 GET 一律 405 + JSON 错误 + Allow: GET
-	for _, path := range []string{"/healthz", "/api/v1/projects", "/api/v1/tree", "/api/v1/note", "/api/v1/search", "/api/v1/log", "/api/v1/diff"} {
+	// 只读端点:非 GET 一律 405 + JSON 错误 + Allow: GET
+	for _, path := range []string{"/healthz", "/api/v1/projects", "/api/v1/tree", "/api/v1/search", "/api/v1/log", "/api/v1/diff"} {
 		for _, method := range []string{http.MethodPost, http.MethodPut, http.MethodDelete, http.MethodPatch} {
 			res, body := do(t, ts, method, path)
 			if res.StatusCode != http.StatusMethodNotAllowed {
@@ -422,18 +422,25 @@ func TestServeReadOnlyMethods(t *testing.T) {
 			}
 		}
 	}
-	// 未知路径 404 + JSON 错误
-	res, body := do(t, ts, http.MethodGet, "/api/v1/nope")
-	if res.StatusCode != http.StatusNotFound {
-		t.Fatalf("未知端点应 404,得到 %d:%s", res.StatusCode, body)
+	// /api/v1/note 是写端点宿主(§8.6):未配置令牌时 POST/DELETE 一律 403(纯只读降级);
+	// 其余方法(PUT/PATCH 等)仍是 405 + Allow
+	for _, method := range []string{http.MethodPost, http.MethodDelete} {
+		res, body := do(t, ts, method, "/api/v1/note")
+		if res.StatusCode != http.StatusForbidden {
+			t.Fatalf("%s /api/v1/note(未配置令牌)应 403,得到 %d:%s", method, res.StatusCode, body)
+		}
+		var e map[string]any
+		if err := json.Unmarshal(body, &e); err != nil || e["error"] == nil || !strings.Contains(e["error"].(string), "只读模式") {
+			t.Fatalf("403 响应应为只读模式提示,得到 %s", body)
+		}
 	}
-	var e map[string]any
-	if err := json.Unmarshal(body, &e); err != nil || e["error"] == nil {
-		t.Fatalf("404 响应应为 {\"error\":…},得到 %s", body)
-	}
-	// 项目作用域:非本项目路径 404(项目隔离)
-	res, body = do(t, ts, http.MethodGet, "/api/v1/tree?at=other-project")
-	if res.StatusCode != http.StatusNotFound {
-		t.Fatalf("他项目引用应 404(项目隔离),得到 %d:%s", res.StatusCode, body)
+	for _, method := range []string{http.MethodPut, http.MethodPatch} {
+		res, body := do(t, ts, method, "/api/v1/note")
+		if res.StatusCode != http.StatusMethodNotAllowed {
+			t.Fatalf("%s /api/v1/note 应 405,得到 %d:%s", method, res.StatusCode, body)
+		}
+		if res.Header.Get("Allow") != "GET, POST, DELETE" {
+			t.Fatalf("%s /api/v1/note 应带 Allow: GET, POST, DELETE,得到 %q", method, res.Header.Get("Allow"))
+		}
 	}
 }

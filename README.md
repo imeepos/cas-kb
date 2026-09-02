@@ -2,7 +2,7 @@
 
 一句话定位:以**内容寻址存储(CAS)+ Merkle 树**为核心的知识库系统。
 存储引擎**默认 SQLite 本地文件**(零依赖开箱即用),`KB_DSN=postgres://…` 可切换 PostgreSQL(生产部署于主机 `102`);开发语言 **Go**,交付物为 CLI `kb`。
-本仓库包含设计文档、数据模型规格与实现代码:ROADMAP 的 **M1–M3.11 与 M4 CLI 已交付**(存储内核、条目与版本、同步与运维、项目隔离、回退与历史读取、AI 选用元数据、目录层级、库级运维命令、双后端、全文检索与倒排索引),HTTP API 为 M4 可选项、未开工。
+本仓库包含设计文档、数据模型规格与实现代码:ROADMAP 的 **M1–M3.11 与 M4 CLI 已交付**(存储内核、条目与版本、同步与运维、项目隔离、回退与历史读取、AI 选用元数据、目录层级、库级运维命令、双后端、全文检索与倒排索引),HTTP API(M4 收尾只读 + M4.1 写入型,令牌鉴权、默认只读)已交付。
 
 ## 文档导航
 
@@ -38,7 +38,8 @@
 - **Markdown 互操作**:`kb export md <目录>` 当前分支或 `--at` 历史快照导出为镜像 .md 文件树(front-matter + 正文原文字节,已存在整批拒绝、`--force` 覆盖);`kb import md <目录>` 递归导入(title 必填、tags 逗号分隔,问题文件整批响亮拒绝,一次提交一次索引增量);roundtrip 逐字节一致,写回零变更(地址不变)
 - **暂存工作流**:`note set/rm`、`dir rm --stage` 累积到暂存分支(单条成本恒定),`kb stage` 查看清单、`kb commit` 合入、`kb commit --abort` 丢弃
 - **存储透明压缩**:SQLite 索引对象写入 gzip、读取透明解压,库体积 −60%;`KB_COMPRESS=off` 可关
-- **只读 HTTP API**(M4 收尾,DESIGN §8.5):`kb serve` 默认只绑 127.0.0.1:8787,暴露 `/healthz` 与 `/api/v1/{projects,tree,note,search,log,diff}`(全部 GET,POST 一律 405,无写端点);JSON 与 CLI `--json` 同一份契约(internal/view,TestServeCLIParity 逐字段钉死)
+- **只读 HTTP API**(M4 收尾,DESIGN §8.5):`kb serve` 默认只绑 127.0.0.1:8787,暴露 `/healthz` 与 `/api/v1/{projects,tree,note,search,log,diff}`(全部 GET);JSON 与 CLI `--json` 同一份契约(internal/view,TestServeCLIParity 逐字段钉死)
+- **写入型 HTTP API**(M4.1,DESIGN §8.6):`POST/DELETE /api/v1/note` 等价 `kb note set/rm`(复用 repo.SetNote/RemoveNote);`--token <值>` 或 `KB_SERVE_TOKEN` 启用写端点(内存常量时间比较、不写日志不回显),**未配置令牌时保持纯只读(写端点一律 403)**;锁忙返回 503 并提示稍后重试或改用 CLI;`kb note get` 补 `--json`(TestServeWriteCLIParity 逐字段钉死)
 
 ## 快速开始
 
@@ -97,13 +98,23 @@
     ./kb export md ~/notes               # 当前分支全部条目 → 镜像 .md 文件树(--at 可读历史快照)
     ./kb import md ~/notes               # 递归导入 .md 目录(front-matter:title/tags;一次提交一次索引增量)
 
-只读 HTTP API(AI/Agent 免 shell 消费;DESIGN §8.5):
+HTTP API(AI/Agent 免 shell 消费与写入;DESIGN §8.5/§8.6):
 
     ./kb serve                           # 默认 127.0.0.1:8787,只绑回环;Ctrl-C 优雅退出
     ./kb serve --addr 127.0.0.1:9000     # 换端口;跨机消费走 SSH 端口转发或反向代理
     curl -s localhost:8787/healthz                       # {"ok": true, "backend": "sqlite", ...}
     curl -s 'localhost:8787/api/v1/note?path=hello'      # 单条笔记(正文 + 派生摘要)
     curl -s 'localhost:8787/api/v1/search?q=chan&limit=5' # 检索,与 kb search --json 同构
+
+写入模式(默认只读;配置令牌后启用 POST/DELETE,DESIGN §8.6):
+
+    ./kb serve --token <token>           # 或 export KB_SERVE_TOKEN=<token>(--token 优先)
+    curl -s -X POST 'localhost:8787/api/v1/note' \      # 等价 kb note set;201 + {path,address,short}
+         -H "Authorization: Bearer <token>" -H 'Content-Type: application/json' \
+         -d '{"path":"go/concurrency/channel","title":"通道","tags":["go"],"body":"chan 语义"}'
+    curl -s -X DELETE -H "Authorization: Bearer <token>" \  # 等价 kb note rm;200 + {removed,short}
+         'localhost:8787/api/v1/note?path=go/concurrency/channel'
+    # 未配置令牌:写端点一律 403(纯只读);缺头/错令牌 401;与 CLI 同时写遇锁忙 503
 
 ## 开发与测试
 

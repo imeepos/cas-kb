@@ -32,12 +32,12 @@ func oldestShort(t *testing.T) string {
 }
 
 // startAPIServe 在随机端口起一个 kb serve 实例(测试库已由 initRepo 准备),
-// 返回基础 URL 与停止函数(优雅退出并等待收尾完成)。
-func startAPIServe(t *testing.T) (baseURL string, stop func()) {
+// token 非空时为该实例配置写入令牌;返回基础 URL 与停止函数(优雅退出并等待收尾完成)。
+func startAPIServe(t *testing.T, token string) (baseURL string, stop func()) {
 	t.Helper()
 	ctx, cancel := context.WithCancel(context.Background())
 	p, err := startServe(ctx, "127.0.0.1:0", server.Options{
-		DSN: effectiveDSN(), Project: projectName(), Branch: branchName(),
+		DSN: effectiveDSN(), Project: projectName(), Branch: branchName(), Token: token,
 	})
 	if err != nil {
 		t.Fatalf("起 serve: %v", err)
@@ -110,7 +110,7 @@ func TestServeCLIParity(t *testing.T) {
 	}
 	s1 := oldestShort(t) // 最旧快照(仅 channel v1;log 最新在前,末行即首提交)
 
-	base, stop := startAPIServe(t)
+	base, stop := startAPIServe(t, "")
 	defer stop()
 
 	// ---- search:字段与顺序逐项相等 ----

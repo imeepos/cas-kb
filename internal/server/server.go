@@ -1,11 +1,14 @@
-// Package server 实现 kb serve 的只读 HTTP API(M4 收尾,DESIGN §8.5):
-// 让 AI/Agent 免 shell 消费知识库。全部端点只读(GET),非 GET 一律 405,
-// 无任何写端点——写路径只有 CLI。JSON 行契约复用 internal/view,
+// Package server 实现 kb serve 的 HTTP API(DESIGN §8.5 只读 + §8.6 写入型):
+// 让 AI/Agent 免 shell 消费并写入知识库。读端点保持只读 GET;写入端点
+// (POST /api/v1/note、DELETE /api/v1/note)直接复用 repo.SetNote/RemoveNote,
+// 绝不另写第二套写逻辑。未配置令牌时服务保持纯只读:写端点一律 403,
+// 一切行为与 v0.4.0 只读 serve 完全一致。JSON 行契约复用 internal/view,
 // 与 CLI --json 输出同构(cmd/kb TestServeCLIParity 钉死)。
 package server
 
 import (
 	"context"
+	"crypto/subtle"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -27,15 +30,20 @@ type Options struct {
 	Project string
 	// Branch 是默认分支名(空串按 main)。
 	Branch string
+	// Token 是写入令牌(KB_SERVE_TOKEN/--token 解析后的值);空串=未配置,
+	// 服务保持纯只读,写端点一律 403。令牌只从内存比较,绝不写日志/回显。
+	Token string
 }
 
-// Server 持有一个已打开的仓库视图,只消费 repo/store 的读路径。
+// Server 持有一个已打开的仓库视图;读路径消费 repo/store 的读方法,
+// 写路径直接复用 repo.SetNote/RemoveNote(语义与 CLI 逐字段一致)。
 type Server struct {
 	st      store.Store
 	r       *repo.Repo
 	backend string // sqlite | postgres
 	target  string // 展示目标(绝不含凭据)
 	project string
+	token   string // 空串=未配置写入令牌(纯只读模式)
 }
 
 // New 打开存储并构造 Server;调用方负责 Close。
@@ -46,7 +54,7 @@ func New(ctx context.Context, opts Options) (*Server, error) {
 	}
 	name, target := store.DescribeBackend(opts.DSN)
 	r := repo.Open(s, repo.Config{Project: opts.Project, Branch: opts.Branch})
-	return &Server{st: s, r: r, backend: name, target: target, project: r.Project()}, nil
+	return &Server{st: s, r: r, backend: name, target: target, project: r.Project(), token: opts.Token}, nil
 }
 
 // Backend 返回后端名(sqlite|postgres)与展示目标(不含凭据),供启动横幅打印。
@@ -61,13 +69,15 @@ func (s *Server) Branch() string { return s.r.Branch() }
 // Close 释放底层存储连接。
 func (s *Server) Close() error { return s.st.Close() }
 
-// Handler 返回只读路由。已知端点非 GET 一律 405;未知路径 404;错误响应一律 {"error":"…"}。
+// Handler 返回路由。读端点 GET-only(非 GET 一律 405);
+// 写入端点 POST/DELETE /api/v1/note 需要 Bearer 令牌鉴权(未配置令牌时一律 403);
+// 未知路径 404;错误响应一律 {"error":"…"}。
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/healthz", s.onlyGET(s.handleHealth))
 	mux.HandleFunc("/api/v1/projects", s.onlyGET(s.handleProjects))
 	mux.HandleFunc("/api/v1/tree", s.onlyGET(s.handleTree))
-	mux.HandleFunc("/api/v1/note", s.onlyGET(s.handleNote))
+	mux.HandleFunc("/api/v1/note", s.handleNoteRoute) // GET 读 + POST 写 + DELETE 写
 	mux.HandleFunc("/api/v1/search", s.onlyGET(s.handleSearch))
 	mux.HandleFunc("/api/v1/log", s.onlyGET(s.handleLog))
 	mux.HandleFunc("/api/v1/diff", s.onlyGET(s.handleDiff))
@@ -77,7 +87,8 @@ func (s *Server) Handler() http.Handler {
 	return mux
 }
 
-// onlyGET 把任意处理器收紧为 GET-only:写方法一律 405(只读纪律,连 POST 都不例外)。
+// onlyGET 把只读端点收紧为 GET-only:写方法一律 405(只读纪律,连 POST 都不例外)。
+// 注意:/api/v1/note 不走本包装(它承载 GET 读 + POST/DELETE 写,见 handleNoteRoute)。
 func (s *Server) onlyGET(h http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
@@ -87,6 +98,52 @@ func (s *Server) onlyGET(h http.HandlerFunc) http.HandlerFunc {
 		}
 		h(w, r)
 	}
+}
+
+// handleNoteRoute 按方法分发 /api/v1/note:
+//   - GET    → 读单条(handleNote)
+//   - POST   → 写入(POST /api/v1/note,handleNoteCreate)
+//   - DELETE → 删除(DELETE /api/v1/note?path=,handleNoteDelete)
+//   - 其余   → 405
+func (s *Server) handleNoteRoute(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet:
+		s.handleNote(w, r)
+	case http.MethodPost:
+		s.handleNoteCreate(w, r)
+	case http.MethodDelete:
+		s.handleNoteDelete(w, r)
+	default:
+		w.Header().Set("Allow", "GET, POST, DELETE")
+		s.writeError(w, http.StatusMethodNotAllowed, fmt.Errorf("/api/v1/note 仅支持 GET/POST/DELETE,收到 %s", r.Method))
+	}
+}
+
+// writeDisabledErr 是未配置写入令牌时写端点的一律 403 文案(DESIGN §8.6)。
+var writeDisabledErr = errors.New("服务未配置写入令牌,当前为只读模式;设置 KB_SERVE_TOKEN 后启用")
+
+// writeMode 报告服务是否启用了写入令牌。
+func (s *Server) writeMode() bool { return s.token != "" }
+
+// requireWriteToken 校验写请求的 Bearer 令牌。未配置令牌 → 403(纯只读降级);
+// 已配置但缺头/错令牌 → 401。令牌只从内存常量时间比较,永不写日志/回显。
+func (s *Server) requireWriteToken(w http.ResponseWriter, r *http.Request) bool {
+	if !s.writeMode() {
+		s.writeError(w, http.StatusForbidden, writeDisabledErr)
+		return false
+	}
+	const prefix = "Bearer "
+	h := r.Header.Get("Authorization")
+	if !strings.HasPrefix(h, prefix) {
+		s.writeError(w, http.StatusUnauthorized, errors.New("缺少写入令牌:请求需带 Authorization: Bearer <token> 头"))
+		return false
+	}
+	got := strings.TrimSpace(h[len(prefix):])
+	if len(got) != len(s.token) || subtle.ConstantTimeCompare([]byte(got), []byte(s.token)) != 1 {
+		s.writeError(w, http.StatusUnauthorized, errors.New("写入令牌无效(Authorization: Bearer <token>)"))
+		return false
+	}
+	return true
 }
 
 // handleHealth 服务 GET /healthz → {"ok":true,"backend":…,"schema_version":N,"project":…}

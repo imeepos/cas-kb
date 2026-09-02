@@ -26,6 +26,10 @@ func noteGet(ctx context.Context, r *repo.Repo, args []string) error {
 	if err != nil {
 		return err
 	}
+	if f.has("--json") {
+		// 行契约复用 internal/view(与 GET /api/v1/note 同构,TestServeWriteCLIParity 钉死)
+		return printJSON(view.NoteRowOf(ref))
+	}
 	fmt.Printf("path:  %s\naddr:  %s\ntitle: %s\ntags:  %s\n",
 		ref.Path, ref.Addr, ref.Note.Meta.Title, strings.Join(ref.Note.Meta.Tags, ","))
 	fmt.Printf("body:\n%s\n", string(ref.Body))

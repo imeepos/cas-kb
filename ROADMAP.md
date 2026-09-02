@@ -2,7 +2,7 @@
 
 每个里程碑交付可独立验收的能力;验收标准即测试用例的来源。
 
-> 状态:M1–M3.10 已交付并通过验收(M3.10=存储后端可插拔:SQLite 默认、PostgreSQL 可选);M3.11=dir tree 全库视图(展示层增量)已交付;M4 CLI 部分已交付(倒排索引纳入快照 + kb search / link resolve / index rebuild,schema v5);M3.12=Markdown 互操作(export md / import md,增量)已交付;M4 增补=gc --keep-last K 历史保留水位(历史索引精简)已交付;M4 收尾=只读 HTTP API(kb serve,DESIGN §8.5)已交付。
+> 状态:M1–M3.10 已交付并通过验收(M3.10=存储后端可插拔:SQLite 默认、PostgreSQL 可选);M3.11=dir tree 全库视图(展示层增量)已交付;M4 CLI 部分已交付(倒排索引纳入快照 + kb search / link resolve / index rebuild,schema v5);M3.12=Markdown 互操作(export md / import md,增量)已交付;M4 增补=gc --keep-last K 历史保留水位(历史索引精简)已交付;M4 收尾=只读 HTTP API(kb serve,DESIGN §8.5)已交付;M4.1=写入型 HTTP API(kb serve 写端点,令牌鉴权,DESIGN §8.6)已交付。
 
 ## M1 存储内核
 
@@ -156,3 +156,24 @@
 - `go test ./internal/index/ ./internal/repo/ -run "TestM4|TestSearch"`
 - `go test ./internal/server/ ./cmd/kb/ -run TestServe -v`
 - `./scripts/e2e.sh`(含 M4 段:命中/确定性/--json/--at/rebuild/fsck;含 serve 段:后台起服务、curl 断言 healthz/note/search/POST 405、kill 优雅退出)
+
+## M4.1 写入型 HTTP API(增量)
+
+**范围**:在 §8.5 只读 API 之上新增恰好两个写端点——`POST /api/v1/note`(等价 `kb note set`,成功 201 + {path,address,short})与 `DELETE /api/v1/note?path=`(等价 `kb note rm`,成功 200 + {removed,short}),直接复用 repo.SetNote/RemoveNote,不暴露 stage/bulk/其他写命令;令牌鉴权 `--token <值>` / `KB_SERVE_TOKEN`(旗标优先,内存常量时间比较,不写日志不回显),**未配置令牌时服务保持纯只读(写端点一律 403)**;锁忙(serve 与 CLI 并发写)返回 503 +「稍后重试或改用 CLI」,不产生半写状态,写后 fsck 可过、检索立即可见;`kb note get` 补 `--json`(与 GET /api/v1/note 同构,internal/view 契约);文档四处同步(DESIGN §8.6 / 本节 / README / CHANGELOG)。
+
+**验收标准**(与测试一一对应)
+- 鉴权矩阵:未配置令牌 POST/DELETE 403(「服务未配置写入令牌…」文案);配置后缺头 401 / 错令牌 401 / 对令牌 POST 201;响应不回显令牌;读端点保持无鉴权——`TestServeWriteAuthMatrix`(internal/server)
+- 写入后读回一致(POST 201 + {path,address,short};GET 读回逐字段相等)且 POST 后 fsck 零问题——`TestServeWriteReadback`
+- 写入后立即可 search(索引增量同步完成后再返回响应)——`TestServeWriteSearchImmediate`
+- 非法路径 400:缺 path/缺 title/空段(a//b)/保留段(../x)/中间段是条目/目标是目录,沿用 CLI 可行动文案;DELETE 缺 path 400——`TestServeWriteBadPath`
+- 删除语义:DELETE 200 + {removed:1,short};删除后 GET 404;重复删除 404;DELETE 后 fsck 可过——`TestServeWriteDelete`
+- 并发写锁忙 503 + 可行动提示(锁占用模拟)——`TestServeWriteLockBusy503`
+- CLI/API parity:API POST→CLI `note get --json` 读回逐字段相等;CLI note set→API 读回相等;API DELETE→CLI note get 404 语义——`TestServeWriteCLIParity`(cmd/kb)
+- e2e 写 API 段:带 KB_SERVE_TOKEN 起 serve → curl POST(缺/错令牌 401、对令牌 201)→ curl search 立即命中 → CLI note get 断言 → curl DELETE → CLI 确认删除 → 重复删除 404;再起无令牌实例断言 POST/DELETE 403——`scripts/e2e.sh`
+
+**验收命令**
+- `go test ./internal/server/ -run TestServeWrite -v`
+- `go test ./cmd/kb/ -run TestServeWrite -v`
+- `./scripts/e2e.sh`
+
+**状态**:已交付(令牌鉴权 + 两个写端点 + 503 语义 + note get --json;internal/server 六个 TestServeWrite* + cmd/kb TestServeWriteCLIParity + e2e 写 API 段全绿)。
