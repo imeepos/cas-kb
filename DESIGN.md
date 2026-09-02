@@ -395,6 +395,23 @@ cas-kb/
 - **契约一致性**:写响应与 GET /api/v1/note 的行契约同在 internal/view 体系(短标识派生同源 view.ShortAddr);`kb note get` 顺带补 `--json`(输出 view.NoteRow,与 GET /api/v1/note 同构),由 cmd/kb `TestServeWriteCLIParity` 钉死:API POST→CLI 读回逐字段相等、CLI set→API 读回逐字段相等、API DELETE→CLI 报不存在
 - **测试与验收**:`go test ./internal/server/ -run TestServeWrite -v`(鉴权矩阵/读回/立即可检索/非法路径/删除/锁忙 503)、`go test ./cmd/kb/ -run TestServeWrite -v`(CLI parity)、e2e 写 API 段(KB_SERVE_TOKEN 起服 → POST → search → CLI get → DELETE → CLI 确认;无令牌实例 POST 403)
 
+### 8.7 健康自检(kb doctor,T49)
+
+- **形态**:`kb doctor [--json] [--check <name>…] [-l|--list-checks] [-p 项目]`。无参跑全部检查,逐项输出「ok/warn/fail + 一句人话 + 可行动修复建议」,末尾汇总行 `doctor: N ok, M warn, K fail`;**退出码两档:有 fail ⇒ 1,仅 ok/warn ⇒ 0**(warn 不拦 CI,学 brew doctor 的克制;细分只存在于行内与 --json)。`-l|--list-checks` 按注册表顺序列举检查名——**检查名即契约,新增只在表尾追加,不破坏旧名**;`--check <name>` 可多次给,单独跑指定项(输出顺序仍按注册表);`--json` 输出 `[{check,status,detail}]` 数组,行契约在 internal/view.DoctorRow(与文本出口同源)
+- **检查项(v1 六项,全部复用现成能力,零新增诊断逻辑;doctor 只诊断不施治,修复永远指向可行动命令)**:
+
+| 检查名 | 内容 | 状态映射 |
+|---|---|---|
+| storage | 打开 KB_DSN 后端(与其它命令同口径,含迁移)+ 库 schema 门禁 | 打不开/版本不符 = fail |
+| fsck | 等价 `kb fsck`(repo.FSCK);另以 repo.UnreachableCount 只读统计悬垂/未达对象(标记口径与 GC 完全一致,同一套逻辑的第二出口) | 完整性问题 = fail;悬垂/未达对象 = warn(信息非错误,学 git fsck --dangling;下次 gc 会清扫) |
+| version | `kb version` 本体 | 仅信息,永不 fail;dev 构建注明「未注入版本号」(沿 §8.4 口径) |
+| config | 已设置的 KB_* 环境变量逐个核对:DSN 形态(KB_DSN/KB_REMOTE_DSN/KB_TEST_DSN)、KB_PROJECT 存在性、KB_GC_PROTECT 取值、KB_UPDATE_REPO 形态;令牌类变量只报「已设置」 | 形态非法 = fail;目标不存在/取值不可识别 = warn;未设置的默认项不提 |
+| gc-protect | KB_GC_PROTECT 开关态 + 分支表备份目录(当前工作目录,见 §6.4)可写性 | 不可写 = warn |
+| serve | 探活 `127.0.0.1:8787` 的 `/healthz`,核对 backend 与 schema_version 和本工具一致 | 连接拒绝 = ok(明确「未运行」不是错误);可达但不一致/不健康 = warn |
+
+- **凭据纪律**:doctor 全部输出(文本与 --json 的 detail)**绝不回显连接串凭据段**——后端展示统一走 store.DescribeBackend(PostgreSQL 只回显 host/database,SQLite 只回显文件路径),DSN 非法的报错丢弃 url.Parse 原文换语义说明;令牌(KB_SERVE_TOKEN/GITHUB_TOKEN)只报「已设置(值不回显)」
+- **存储不可用的联动**:storage fail 时,依赖存储的 fsck/config(存在性部分)不再重复打开,给可行动说明并同样记 fail——doctor 的退出码始终由「有无 fail」决定
+
 ## 9. 风险与权衡
 
 | 风险 | 应对 |
