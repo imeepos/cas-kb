@@ -91,6 +91,8 @@ func NoteLsRows(refs []*repo.NoteRef) []NoteLsRow {
 
 // SearchRow 是 search --json 与 GET /api/v1/search 的行契约。
 // 行序即检索的确定性排序(分数降序 → 路径升序 → 地址),调用方不得重排。
+// Snippet 为可选字段(M4.2 片段高亮):omitempty——仅调用方显式要求
+// (--snippet / snippet=1)时存在,缺省输出与旧契约逐字节一致,旧消费者零破坏。
 type SearchRow struct {
 	Path    string   `json:"path"`
 	Slug    string   `json:"slug"`
@@ -99,9 +101,10 @@ type SearchRow struct {
 	Tags    []string `json:"tags"`
 	Summary string   `json:"summary"`
 	Score   float64  `json:"score"`
+	Snippet string   `json:"snippet,omitempty"`
 }
 
-// SearchRows 由检索命中构造结果行(顺序保持入参序)。
+// SearchRows 由检索命中构造结果行(顺序保持入参序);不带 snippet 字段。
 func SearchRows(hits []repo.SearchHit) []SearchRow {
 	rows := make([]SearchRow, 0, len(hits))
 	for _, h := range hits {
@@ -109,6 +112,17 @@ func SearchRows(hits []repo.SearchHit) []SearchRow {
 			Path: h.Path, Slug: h.Slug, Addr: string(h.Addr), Title: h.Title,
 			Tags: tagsOrEmpty(h.Tags), Summary: Summary(h.Body), Score: h.Score,
 		})
+	}
+	return rows
+}
+
+// SearchRowsWithSnippet 同 SearchRows 并逐条附带命中片段(片段是排序后
+// 附加的展示信息,绝不影响打分与顺序);query 为原始查询串,词元经与索引
+// 同一套分词得到(DESIGN §7.1)。
+func SearchRowsWithSnippet(hits []repo.SearchHit, query string) []SearchRow {
+	rows := SearchRows(hits)
+	for i := range rows {
+		rows[i].Snippet = Snippet(hits[i].Body, query)
 	}
 	return rows
 }
