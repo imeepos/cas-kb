@@ -35,7 +35,7 @@ func usage() {
 		"  kb restore <文件> [--force]  # 恢复备份;目标非空需 --force(先清空)\n" +
 		"  kb wipe [--force]       # 清空整库并重置为全新库;需 --force\n" +
 		"  kb update [--yes] [--repo owner/name]  # 检查 GitHub 最新 Release;--yes 下载并替换本二进制\n" +
-		"  kb serve [--addr 127.0.0.1:8787]  # 只读 HTTP API(默认只绑回环):/healthz /api/v1/projects|tree|note|search|log|diff\n" +
+		"  kb serve [--addr 127.0.0.1:8787] [--token <值>]  # HTTP API(默认只读;设令牌后写端点可用):/healthz /api/v1/projects|tree|note|search|log|diff + POST/DELETE /api/v1/note\n" +
 		"  kb version              # 显示版本号\n\n" +
 		"环境变量:\n" +
 		"  KB_DSN       库连接串:SQLite 路径(默认 ~/.local/share/caskb/caskb.db;可加 sqlite: 前缀)\n" +
@@ -44,6 +44,7 @@ func usage() {
 		"  KB_REMOTE_DSN pull 的远端连接串(或作为参数传入)\n" +
 		"  KB_GC_PROTECT GC 前自动备份分支表(on/off,默认 on)\n" +
 		"  KB_PROJECT   项目作用域(默认 default)\n" +
+		"  KB_SERVE_TOKEN serve 写入令牌(设置后启用 POST/DELETE /api/v1/note;--token 优先;空=纯只读)\n" +
 		"  KB_UPDATE_REPO update 检查的 GitHub 仓库(默认 imeepos/cas-kb)\n" +
 		"  GITHUB_TOKEN   可选;update 查询 API 的令牌(缓解匿名限流)\n")
 }

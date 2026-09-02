@@ -22,11 +22,16 @@ const defaultServeAddr = "127.0.0.1:8787"
 // shutdownGrace 是优雅退出的排空窗口:停收新请求,等待在途请求完成。
 const shutdownGrace = 5 * time.Second
 
-// cmdServe 处理 kb serve:只读 HTTP API。
-// 用法:kb serve [--addr 127.0.0.1:8787] [-p 项目];KB_DSN 正常生效(两后端都可 serve);
-// 启动时打印后端与项目作用域;SIGINT/SIGTERM 或 ctx 取消时优雅退出。
+// serveTokenEnv 是写入令牌的环境变量名;--token 旗标优先于它。
+// 令牌只从内存比较,绝不写日志/回显。
+const serveTokenEnv = "KB_SERVE_TOKEN"
+
+// cmdServe 处理 kb serve:只读 HTTP API + 可选写入型(配置令牌后)。
+// 用法:kb serve [--addr 127.0.0.1:8787] [-p 项目] [--token <值>];
+// KB_DSN/KB_SERVE_TOKEN 正常生效(两后端都可 serve);启动时打印后端与项目作用域;
+// SIGINT/SIGTERM 或 ctx 取消时优雅退出。
 func cmdServe(ctx context.Context, args []string) error {
-	f, err := parseFlags(args, map[string]bool{"--addr": true})
+	f, err := parseFlags(args, map[string]bool{"--addr": true, "--token": true})
 	if err != nil {
 		return err
 	}
@@ -34,13 +39,18 @@ func cmdServe(ctx context.Context, args []string) error {
 	if strings.TrimSpace(addr) == "" {
 		return fmt.Errorf("serve: --addr 不能为空")
 	}
+	token := f.get("--token", os.Getenv(serveTokenEnv))
 	dsn := effectiveDSN()
-	p, err := startServe(ctx, addr, server.Options{DSN: dsn, Project: projectName(), Branch: branchName()})
+	p, err := startServe(ctx, addr, server.Options{DSN: dsn, Project: projectName(), Branch: branchName(), Token: token})
 	if err != nil {
 		return err
 	}
 	name, target := store.DescribeBackend(dsn)
-	fmt.Printf("kb serve 只读 HTTP API(全部端点 GET,非 GET 一律 405)\n")
+	if token == "" {
+		fmt.Printf("kb serve 只读 HTTP API(未配置写入令牌,纯只读)\n")
+	} else {
+		fmt.Printf("kb serve 写入型 HTTP API(已配置写入令牌,写端点需 Bearer 鉴权)\n")
+	}
 	fmt.Printf("后端 %s(%s)\n项目作用域 %s(分支 %s)\n监听 http://%s\n", name, target, p.Project(), p.Branch(), p.Addr().String())
 	fmt.Printf("Ctrl-C 优雅退出\n")
 	return p.wait(ctx)
