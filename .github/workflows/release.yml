@@ -114,7 +114,19 @@ jobs:
           cd dist
           sha256sum kb-*.tar.gz kb-*.zip > sha256sums.txt
           cat sha256sums.txt
+      # 发布说明 = 升级指引(docs/upgrade.md)+ CHANGELOG 最新一节;
+      # --generate-notes 仍追加,保留新贡献者致谢。
+      - name: 组装发布说明(升级指引 + 最新 Changelog 节)
+        run: |
+          {
+            cat docs/upgrade.md
+            echo
+            echo '## Changelog'
+            echo
+            awk 'BEGIN{c=0} /^## /{c++; if(c==2) exit} c>=1{print}' CHANGELOG.md
+          } > notes.md
+          cat notes.md
       - name: 创建 GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" --verify-tag --generate-notes dist/*
+        run: gh release create "$GITHUB_REF_NAME" --verify-tag --notes-file notes.md --generate-notes dist/*
