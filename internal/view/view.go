@@ -231,6 +231,23 @@ func addrPtr(a hash.Address) *string {
 	return &s
 }
 
+// Doctor 状态枚举:退出码契约消费 status(任一 fail ⇒ kb doctor 退出码 1,
+// 仅 ok/warn ⇒ 0);细分只存在于行内,退出码不做多档。
+const (
+	DoctorStatusOK   = "ok"
+	DoctorStatusWarn = "warn"
+	DoctorStatusFail = "fail"
+)
+
+// DoctorRow 是 kb doctor --json 的行契约:检查名(注册表名即契约,新增不破坏
+// 旧名)+ 三档状态 + 一句人话详情(含可行动修复建议)。detail 由 doctor 保证
+// 绝不回显连接串凭据段与令牌值。
+type DoctorRow struct {
+	Check  string `json:"check"`
+	Status string `json:"status"` // ok | warn | fail
+	Detail string `json:"detail"`
+}
+
 // MergeStateRowOf 构造合并状态行;st 为 nil 表示无合并中态(idle 稳态)。
 // project/branch 为生效作用域(回显);merged_branch 按中间态分支命名规则
 // (<branch>-merge)派生。合并态事实字段取 repo.MergeState(meta 键)原值,

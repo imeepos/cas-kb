@@ -66,6 +66,8 @@ func main() {
 		must(cmdGC(ctx, args[1:]))
 	case "fsck":
 		must(cmdFSCK(ctx, args[1:]))
+	case "doctor":
+		must(cmdDoctor(ctx, args[1:]))
 	case "index":
 		must(cmdIndex(ctx, args[1:]))
 	case "reset":
