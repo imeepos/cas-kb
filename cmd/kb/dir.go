@@ -36,9 +36,12 @@ func cmdDir(ctx context.Context, args []string) error {
 
 // dirAdd 创建目录(mkdir -p 语义;已存在且非空则幂等)。
 func dirAdd(ctx context.Context, r *repo.Repo, args []string) error {
-	f, err := parseFlags(args, map[string]bool{"-m": true, "--msg": true})
+	f, err := parseFlags(args, map[string]bool{"-m": true, "--msg": true, "--stage": true})
 	if err != nil {
 		return err
+	}
+	if f.has("--stage") {
+		return fmt.Errorf("dir add: 暂存不支持空目录,请与条目一起提交(条目路径会自动建目录)")
 	}
 	if len(f.pos) < 1 {
 		return fmt.Errorf("dir add: 缺少目录路径")
@@ -110,7 +113,7 @@ func dirLs(ctx context.Context, r *repo.Repo, args []string) error {
 
 // dirRm 删除目录;非空目录需要 --force 递归删除。
 func dirRm(ctx context.Context, r *repo.Repo, args []string) error {
-	f, err := parseFlags(args, map[string]bool{"-m": true, "--msg": true})
+	f, err := parseFlags(args, map[string]bool{"-m": true, "--msg": true, "--stage": true})
 	if err != nil {
 		return err
 	}
@@ -118,6 +121,13 @@ func dirRm(ctx context.Context, r *repo.Repo, args []string) error {
 		return fmt.Errorf("dir rm: 缺少目录路径")
 	}
 	msg := f.get("-m", f.get("--msg", "dir rm"))
+	if f.has("--stage") {
+		if _, err := r.StageRemoveDir(ctx, f.pos[0], msg, f.has("--force")); err != nil {
+			return err
+		}
+		fmt.Printf("staged dir rm %s\n", f.pos[0])
+		return nil
+	}
 	snapAddr, err := r.RemoveDir(ctx, f.pos[0], msg, f.has("--force"))
 	if err != nil {
 		return err

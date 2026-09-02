@@ -30,4 +30,8 @@ func cmdNote(ctx context.Context, args []string) error {
 }
 
 // validNoteFlags 声明 note set 需要取值的旗标。
+// 注意:不在集合内的 "-x" 旗标按布尔处理(--stage 等)。
 var validNoteFlags = map[string]bool{"--title": true, "--body": true, "--tags": true, "-m": true, "--msg": true, "--time": true}
+
+// validRmFlags 声明删除类子命令需要取值的旗标(--stage/--force 为布尔)。
+var validRmFlags = map[string]bool{"-m": true, "--msg": true}

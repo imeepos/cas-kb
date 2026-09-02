@@ -20,6 +20,7 @@ func usage() {
 		"  kb dir rm <目录> [-m msg] [--force] # 删目录;非空需 --force 递归\n" +
 		"  kb dir tree [目录]                 # 层级树(note 附标题);不带 -p/KB_PROJECT 时展示全库视图(项目为顶层)\n" +
 		"  kb log\n" +
+		"  kb stage | kb commit [-m msg] [--abort]  # 暂存工作流:--stage 变更累积,commit 一次提交\n" +
 		"  kb diff <base> <tip>     # base/tip 可为分支名、地址或短标识(kb log 首列)\n" +
 		"  kb pull [remoteDsn] [--force]\n" +
 		"  kb gc\n" +
