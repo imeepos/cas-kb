@@ -335,7 +335,7 @@ cas-kb/
 - **仓库与限流**:默认 `imeepos/cas-kb`,`--repo owner/name` 或 `KB_UPDATE_REPO` 覆盖;匿名 API 有限流,可设 `GITHUB_TOKEN`(仅作请求头,不入盘不入库)
 - 更新只替换 CLI 本体,不触碰库 schema;版本升级涉及的库 schema 演进仍按 §8.3 迁移口径处理
 
-### 8.5 只读 HTTP API(kb serve,M4 收尾)
+### 8.5 只读 HTTP API(kb serve,M4 收尾;写入端点见 §8.6)
 
 - **定位**:让 AI/Agent 与外部工具免 shell 消费知识库;`kb serve [--addr 127.0.0.1:8787] [-p 项目]` 启动,`KB_DSN`/`KB_BRANCH`/`KB_PROJECT` 正常生效,SQLite 与 PostgreSQL 两后端都可 serve;SIGINT/SIGTERM 优雅退出(停收新请求、排空在途请求,默认 5s)
 - **端点表**(全部 GET;响应 JSON,2 空格缩进、不转义 HTML,与 CLI `--json` 同款编码):
@@ -350,9 +350,26 @@ cas-kb/
 | `/api/v1/log` | `limit`(正整数) | 快照链(最新在前):id/time/message/parents,短标识与 CLI 同长 | limit 非法 400 |
 | `/api/v1/diff` | `from`、`to` 必填 | A/D/M 按全路径,`diff --json` 同构 | 缺参 400;引用不存在 404;歧义 400 |
 
-- **只读纪律**:无任何写端点,已知端点收到非 GET(含 POST)一律 405 + `Allow: GET`;未知路径 404;错误响应一律 `{"error":"…"}`(400 参数问题 / 404 目标不存在 / 500 其余)。写路径只有 CLI
+- **只读纪律(§8.6 增量前)**:`/healthz` 与 `/api/v1/{projects,tree,note,search,log,diff}` 全部只读,非 GET(含 POST)一律 405 + `Allow: GET`;未知路径 404;错误响应一律 `{"error":"…"}`(400 参数问题 / 404 目标不存在 / 500 其余)。§8.6 之后写路径有 CLI 与写入型 HTTP API 两条,读端点纪律不变
 - **契约一致性声明**:JSON 行契约集中在 `internal/view`(字段名、字段序、摘要与短标识派生规则一份实现),CLI `--json` 与 `/api/v1/*` 共用;`cmd/kb` 的 `TestServeCLIParity` 在同一临时库上对 search(含多词、`--at`、limit)、projects、diff 逐字段断言两条出口相等,顺序亦必须相等
 - **安全边界**:默认只绑 `127.0.0.1`,不对外网暴露;跨机消费走 SSH 端口转发或反向代理(自行加鉴权);`--addr 127.0.0.1:0` 由内核分配端口,测试与 e2e 用其避免端口冲突
+
+### 8.6 写入型 API 与令牌鉴权(kb serve 写端点,M4.1 增量)
+
+- **定位**:让 AI/Agent 经 HTTP 直接写知识库,不必落 shell;在 §8.5 只读 API 之上新增**恰好两个**写端点(POST/DELETE /api/v1/note),不暴露 stage/bulk/其他写命令(范围控制)。写语义与 CLI 逐字段一致——直接复用 repo.SetNote/RemoveNote,不写第二套逻辑
+- **令牌语义**:`--token <值>` 旗标与环境变量 `KB_SERVE_TOKEN`(旗标优先)配置写入令牌;令牌只在内存中与请求头比较(crypto/subtle.ConstantTimeCompare),**不写日志、不回显**。配置后读端点保持无鉴权(本机约定,§8.5 不变);写端点要求 `Authorization: Bearer <token>`,缺失或错误分别 401,全程不在响应中回显 token
+- **只读降级(安全底线)**:未配置令牌时服务保持纯只读,一切行为与 v0.4.0 完全一致;两个写端点存在但一律 `403 + {"error":"服务未配置写入令牌,当前为只读模式;设置 KB_SERVE_TOKEN 后启用"}`
+- **端点表**:
+
+| 端点 | 入参 | 语义 | 错误 |
+|---|---|---|---|
+| `POST /api/v1/note` | body JSON `{"path","title","tags"?,"body"}` | 等价 `kb note set`;成功 `201 + {"path","address","short"}`(address=note 对象地址,short=新快照短标识) | 参数缺失/非法路径/路径是目录 400(沿用 CLI 可行动文案);缺/错令牌 401;未配置令牌 403;锁忙 503 |
+| `DELETE /api/v1/note` | `?path=<全路径>` | 等价 `kb note rm`;成功 `200 + {"removed":1,"short"}` | 路径不存在 404;缺/坏 path 400;缺/错令牌 401;未配置令牌 403;锁忙 503 |
+
+- **503 语义(并发与一致性)**:serve 与 CLI 同时写依赖后端事务串行化(SQLite 单写者 + busy_timeout / PG 行锁),后端报锁忙(SQLITE_BUSY / PG lock 类错误,store.IsLockBusy 识别)时返回 `503` + 可行动提示「稍后重试或改用 CLI」;写路径对象幂等,失败只留未达对象交 GC,**不产生半写状态**
+- **写后不变量**:每次 POST/DELETE 在响应前完成「blob/note/tree/snapshot + 检索索引增量 + 分支指针推进」全链路(repo.SetNote/RemoveNote 同步语义),因此响应返回后 fsck 恒可过、检索立即可见——由 TestServeWriteReadback(POST 后 fsck 零问题)与 TestServeWriteSearchImmediate(POST 后立即可检索)钉死
+- **契约一致性**:写响应与 GET /api/v1/note 的行契约同在 internal/view 体系(短标识派生同源 view.ShortAddr);`kb note get` 顺带补 `--json`(输出 view.NoteRow,与 GET /api/v1/note 同构),由 cmd/kb `TestServeWriteCLIParity` 钉死:API POST→CLI 读回逐字段相等、CLI set→API 读回逐字段相等、API DELETE→CLI 报不存在
+- **测试与验收**:`go test ./internal/server/ -run TestServeWrite -v`(鉴权矩阵/读回/立即可检索/非法路径/删除/锁忙 503)、`go test ./cmd/kb/ -run TestServeWrite -v`(CLI parity)、e2e 写 API 段(KB_SERVE_TOKEN 起服 → POST → search → CLI get → DELETE → CLI 确认;无令牌实例 POST 403)
 
 ## 9. 风险与权衡
 

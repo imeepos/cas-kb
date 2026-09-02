@@ -3,6 +3,12 @@
 本文件记录面向用户的显著变更;格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 升级操作指引见 [docs/upgrade.md](docs/upgrade.md)。
 
+## Unreleased
+
+### Added
+- 写入型 HTTP API `kb serve`(M4.1,DESIGN §8.6):`POST /api/v1/note`(等价 `kb note set`,成功 201 + `{"path","address","short"}`)与 `DELETE /api/v1/note?path=`(等价 `kb note rm`,成功 200 + `{"removed":1,"short"}`),语义与 CLI 逐字段一致、直接复用 repo.SetNote/RemoveNote;令牌鉴权 `--token <值>` / `KB_SERVE_TOKEN`(旗标优先,内存常量时间比较,不写日志不回显),**未配置令牌时服务保持纯只读(写端点一律 403)**,读端点保持无鉴权;参数缺失/非法路径/路径是目录 400 沿用 CLI 可行动文案,路径不存在 404;serve 与 CLI 同时写遇锁忙返回 503 +「稍后重试或改用 CLI」,写后 fsck 可过、检索立即可见
+- `kb note get --json`:单条笔记机器可读输出,与 GET /api/v1/note 同构(internal/view.NoteRow 一份契约)
+
 ## v0.4.0 - 2026-09-02
 
 ### Added

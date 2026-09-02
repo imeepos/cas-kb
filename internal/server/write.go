@@ -128,8 +128,8 @@ func isWritePathConflict(err error) bool {
 		return false
 	}
 	for _, marker := range []string{
-		"是目录,不能作为条目写入", // SetNote:目标同名是目录
-		"是条目,不能作为目录",   // mutateAt:中间段是条目
+		"是目录,不能作为条目写入",     // SetNote:目标同名是目录
+		"是条目,不能作为目录",       // mutateAt:中间段是条目
 		"是目录,请用 dir rm 删除", // RemoveNote:目标是目录
 	} {
 		if strings.Contains(err.Error(), marker) {
