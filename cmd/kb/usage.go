@@ -22,7 +22,7 @@ func usage() {
 		"  kb dir rm <目录> [-m msg] [--force] # 删目录;非空需 --force 递归\n" +
 		"  kb dir tree [目录]                 # 层级树(note 附标题);不带 -p/KB_PROJECT 时展示全库视图(项目为顶层)\n" +
 		"  kb log\n" +
-		"  kb stage | kb commit [-m msg] [--abort]  # 暂存工作流:--stage 变更累积,commit 一次提交\n" +
+		"  kb stage [--json] | kb commit [-m msg] [--abort]  # 暂存工作流:--stage 变更累积,commit 一次提交;stage --json 输出合并状态(与 GET /api/v1/merge-state 同构)\n" +
 		"  kb diff <base> <tip> [--json]  # base/tip 可为分支名、地址或短标识(kb log 首列);JSON 行含 path/type/from/to\n" +
 		"  kb pull [remoteDsn] [--force | --merge [--allow-unrelated]]  # 分叉时 --merge 三方合并(冲突建 <branch>-merge 中间态,退出码非零),--merge --allow-unrelated 两库无共同历史做空基线合并,--force 覆盖回退,互斥\n" +
 		"  kb merge --continue [-m msg] | --abort  # 收束合并中间态:--continue 裁决后落双亲合并快照,--abort 放弃并回到合并前\n" +

@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/imeepos/cas-kb/internal/repo"
+	"github.com/imeepos/cas-kb/internal/view"
 )
 
 // cmdCommit 提交暂存:一次树差异 → main 单快照 + 一次索引增量 → stage 归零。
@@ -40,9 +41,15 @@ func cmdCommit(ctx context.Context, args []string) error {
 }
 
 // cmdStage 查看暂存清单;合并中态切换为展示合并裁决清单(调研 §4-4:
-// 防止把合并裁决误当普通暂存)。
-// 用法: kb stage
+// 防止把合并裁决误当普通暂存)。--json 输出合并状态行契约(view.MergeStateRow,
+// 与 GET /api/v1/merge-state 同构,idle 为轮询稳态)——两条出口一份实现,
+// 由 cmd/kb TestServeMergeStateParity 钉死逐字段相等(T48)。
+// 用法: kb stage [--json]
 func cmdStage(ctx context.Context, args []string) error {
+	f, err := parseFlags(args, nil)
+	if err != nil {
+		return err
+	}
 	r, s, err := openRepo(ctx)
 	if err != nil {
 		return err
@@ -51,6 +58,9 @@ func cmdStage(ctx context.Context, args []string) error {
 	ms, err := r.MergeState(ctx)
 	if err != nil {
 		return err
+	}
+	if f.has("--json") {
+		return printJSON(view.MergeStateRowOf(r.Project(), r.Branch(), ms))
 	}
 	if ms != nil {
 		return printMergeStatus(ms)

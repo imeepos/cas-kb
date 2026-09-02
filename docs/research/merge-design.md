@@ -341,6 +341,7 @@ $ kb merge --continue -m "merge theirs:收件箱裁决、daily 删除、go 同�
 7. **`kb log` 展示面**。first-parent 遍历不展示第二 parents 链,v1 靠合并 Message 注明;但「合并后 log 少了一段历史」的可感知缺失需要文档明示。开放:`log --all`(按可达集全展示,按 time 排序)或图形态输出;与短标识解析可达集(已含两链)的不对称要在文档讲清。
 8. **中间态与 backup/serve 的边界**。合并进行中做 backup:分支载荷含 `-merge` 分支但 meta 键不在备份格式里,restore 后中间态不可续(只剩孤儿分支);serve 写端点冻结纪律需要 server 层感知中间态。v1 口径「合并进行中不保证备份中间态、serve 拒绝写」要在文档与命令输出明示;开放:meta 键纳入 backup header 扩展。
 9. **API 暴露面**。合并要不要进 HTTP API(如 `POST /api/v1/merge`)?v1 不暴露(§8.6 先例:写 API 只覆盖 note 读写,范围控制);但 AI 裁决走 CLI 还是 API 的通路差异会在多机自动化场景放大(§4-3)。开放:最小只读暴露(`GET /api/v1/merge/status`)还是完全 CLI-only。
+   - 已闭合:见 `GET /api/v1/merge-state`(v0.7)
 
 ## 5. 结论:ROADMAP 里程碑建议(供负责人评审后立项)
 

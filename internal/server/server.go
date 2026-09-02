@@ -81,6 +81,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/api/v1/search", s.onlyGET(s.handleSearch))
 	mux.HandleFunc("/api/v1/log", s.onlyGET(s.handleLog))
 	mux.HandleFunc("/api/v1/diff", s.onlyGET(s.handleDiff))
+	mux.HandleFunc("/api/v1/merge-state", s.onlyGET(s.handleMergeState))
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, http.StatusNotFound, fmt.Errorf("未知端点: %s %s", r.Method, r.URL.Path))
 	})
@@ -305,6 +306,51 @@ func (s *Server) handleDiff(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.writeJSON(w, http.StatusOK, view.DiffRows(changes))
+}
+
+// handleMergeState 服务 GET /api/v1/merge-state?project=&branch= → 合并中间态
+// 查询(调研 best-practices-adoption §1.3):单枚举 state(idle|merging)+ 派生
+// 布尔 + 事实字段。无合并中态返回 200 + state:"idle"(自动化轮询的稳态,不是
+// 错误);项目或分支不存在才 404;参数显式给空白值 400。合并态事实复用
+// repo.MergeState 的读取(meta 键一份实现,不另写解析),行契约 view.MergeStateRowOf
+// 与 kb stage --json 同构(cmd/kb TestServeMergeStateParity 钉死)。
+func (s *Server) handleMergeState(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	project, branch := s.project, s.r.Branch()
+	for name, dst := range map[string]*string{"project": &project, "branch": &branch} {
+		vals, ok := q[name]
+		if !ok {
+			continue // 省略参数即取 serve 进程作用域,与现有端点参数习惯一致
+		}
+		if strings.TrimSpace(vals[0]) == "" {
+			s.writeError(w, http.StatusBadRequest, fmt.Errorf("参数 %s 不能为空白(省略即取 serve 作用域)", name))
+			return
+		}
+		*dst = vals[0]
+	}
+	if _, err := s.st.ProjectGet(r.Context(), project); err != nil {
+		if errors.Is(err, store.ErrProjectNotFound) {
+			s.writeError(w, http.StatusNotFound, fmt.Errorf("项目 %q 不存在: %w", project, err))
+			return
+		}
+		s.writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	if _, err := s.st.BranchGet(r.Context(), project, branch); err != nil {
+		if errors.Is(err, store.ErrBranchNotFound) {
+			s.writeError(w, http.StatusNotFound, fmt.Errorf("分支 %q 不存在(项目 %s): %w", branch, project, err))
+			return
+		}
+		s.writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	rv := repo.Open(s.st, repo.Config{Project: project, Branch: branch, NoIndex: true})
+	ms, err := rv.MergeState(r.Context())
+	if err != nil {
+		s.writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	s.writeJSON(w, http.StatusOK, view.MergeStateRowOf(project, branch, ms))
 }
 
 // parseLimit 解析 limit 参数:空串=不限制;必须正整数。
