@@ -14,6 +14,17 @@ import (
 // ErrAmbiguousRef 表示短标识命中多个快照,无法唯一解析。
 var ErrAmbiguousRef = errors.New("repo: 短标识匹配多个快照,请提供更长前缀")
 
+// translateBranchSetErr 把分支推进失败转译为可行动提示。
+// note/blob 对象在同一写路径刚写入必然存在,外键失败的现实根因
+// 几乎总是「项目未创建」(项目是分支外键的命名空间父级)。
+func (r *Repo) translateBranchSetErr(err error) error {
+	msg := err.Error()
+	if strings.Contains(msg, "FOREIGN KEY") || strings.Contains(msg, "foreign key") {
+		return fmt.Errorf("repo: 项目 %q 不存在,请先执行 kb project create %s(%v)", r.project, r.project, err)
+	}
+	return err
+}
+
 // LogEntry 是日志中的一条:快照地址与内容。
 type LogEntry struct {
 	Addr     hash.Address

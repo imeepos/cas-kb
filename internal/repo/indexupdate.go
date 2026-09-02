@@ -132,7 +132,7 @@ func (r *Repo) RebuildIndex(ctx context.Context, msg string) (hash.Address, hash
 		return "", "", err
 	}
 	if err := r.st.BranchSet(ctx, r.project, r.branch, snapAddr); err != nil {
-		return "", "", err
+		return "", "", r.translateBranchSetErr(err)
 	}
 	return snapAddr, rootAddr, nil
 }

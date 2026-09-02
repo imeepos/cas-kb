@@ -50,7 +50,7 @@ func (r *Repo) Pull(ctx context.Context, src store.Store, srcProject, srcBranch 
 	}
 	res.FastForward = ancestor
 	if err := r.st.BranchSet(ctx, r.project, r.branch, remoteHead); err != nil {
-		return PullResult{}, err
+		return PullResult{}, r.translateBranchSetErr(err)
 	}
 	return res, nil
 }

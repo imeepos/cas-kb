@@ -315,7 +315,7 @@ func (r *Repo) commitTree(ctx context.Context, t *object.Tree, msg string, hasHe
 		return "", err
 	}
 	if err := r.st.BranchSet(ctx, r.project, r.branch, snapAddr); err != nil {
-		return "", err
+		return "", r.translateBranchSetErr(err)
 	}
 	return snapAddr, nil
 }
