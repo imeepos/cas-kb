@@ -286,5 +286,42 @@ step "pull --force 与 --merge 互斥"
 if out=$(run_a -p alpha pull "sqlite:$MDIR/b.db" --force --merge 2>&1); then echo "断言失败: 互斥应报错"; exit 1; else has "互斥" "$out"; fi
 rm -rf "$MDIR"
 
+# ---- M5 冷启动(T44:镜像演练剧本 init 两库→各自写→pull --merge --allow-unrelated)----
+CDIR="$WORK/coldstart"; mkdir -p "$CDIR"
+run_c() { KB_DSN="sqlite:$CDIR/a.db" "$KB" "$@"; }
+run_d() { KB_DSN="sqlite:$CDIR/b.db" "$KB" "$@"; }
+step "coldstart 两库 init + project(零提交)"; run_c init > /dev/null; run_d init > /dev/null
+run_c -p alpha project create alpha > /dev/null; run_d -p alpha project create alpha > /dev/null
+step "coldstart D1 双空 pull → 已是最新空操作"
+out=$(run_c -p alpha pull "sqlite:$CDIR/b.db"); has "已是最新" "$out"
+step "coldstart D1 本地有/远端空 pull → 空操作"
+run_c -p alpha note set task --title T --body v1 -m c0 > /dev/null
+out=$(run_c -p alpha pull "sqlite:$CDIR/b.db"); has "已是最新" "$out"
+step "coldstart 各自写入(无共同历史)"
+run_c -p alpha note set go/channel --title CH --body "a 侧冷启动内容" -m c1 > /dev/null
+run_c -p alpha note set go/goroutine --title GO --body "goroutine 备忘" -m c2 > /dev/null
+run_d -p alpha note set python/decorator --title DEC --body "b 侧冷启动内容" -m d1 > /dev/null
+run_d -p alpha note set rust/lifetime --title LF --body "lifetime 备忘" -m d2 > /dev/null
+step "coldstart 无旗标 pull 拒绝(新文案,不再断指 --merge)"
+if out=$(run_c -p alpha pull "sqlite:$CDIR/b.db" 2>&1); then echo "断言失败: 无共同历史应拒绝"; exit 1; else has "无共同历史" "$out"; has "--allow-unrelated" "$out"; fi
+step "coldstart --merge 缺旗标同样拒绝"
+if out=$(run_c -p alpha pull "sqlite:$CDIR/b.db" --merge 2>&1); then echo "断言失败: 缺 --allow-unrelated 应拒绝"; exit 1; else has "无共同历史" "$out"; has "--allow-unrelated" "$out"; fi
+step "coldstart --merge --allow-unrelated 零冲突落库(双亲)"
+out=$(run_c -p alpha pull "sqlite:$CDIR/b.db" --merge --allow-unrelated); has "冲突 0 条" "$out"; has "合并快照 sha256:" "$out"
+DBHEAD=$(run_d -p alpha log | head -1 | awk '{print $1}')
+PARENTS=$(run_c -p alpha log | head -1 | grep -oE 'parent=[^ ]+')
+echo "$PARENTS" | grep -qF "$DBHEAD" || { echo "断言失败: 空基线合并双亲应含 theirs 头 $DBHEAD: $PARENTS"; exit 1; }
+echo "$PARENTS" | grep -q "," || { echo "断言失败: 空基线合并快照应双亲: $PARENTS"; exit 1; }
+# 检索断言查标题词元(DEC);slug 不入索引,CJK 按二字元
+has "python/decorator" "$(run_c -p alpha search DEC | head -1)"
+has "完整,无问题" "$(run_c fsck)"
+step "coldstart 对侧 ff 至合并快照,再拉幂等 no-op"
+out=$(run_d -p alpha pull "sqlite:$CDIR/a.db"); has "fast-forward" "$out"
+out=$(run_c -p alpha pull "sqlite:$CDIR/b.db"); has "已是最新" "$out"
+step "coldstart --force 与 --merge --allow-unrelated 同给报错(互斥)"
+if out=$(run_c -p alpha pull "sqlite:$CDIR/b.db" --force --merge --allow-unrelated 2>&1); then echo "断言失败: 互斥应报错"; exit 1; else has "互斥" "$out"; fi
+rm -rf "$CDIR"
+
+
 step "gc + fsck";            out=$($KB gc); has "已备份" "$out"; has "完整,无问题" "$($KB fsck)"
 echo "E2E_GREEN"
