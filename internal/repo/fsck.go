@@ -24,11 +24,17 @@ type FSCKResult struct {
 }
 
 // FSCK 全表逐对象重算哈希并校验内部引用完整性。
+// 存在 gc 保留水位(gc.keep_last)时,深度 >= 水位的快照允许缺失其检索
+// 索引引用(--keep-last 精简语义),其余校验不放宽。
 func (r *Repo) FSCK(ctx context.Context) (FSCKResult, error) {
 	var res FSCKResult
-	err := r.st.List(ctx, func(info store.ObjectInfo) error {
+	exempt, err := r.indexPrunedSnapshots(ctx)
+	if err != nil {
+		return FSCKResult{}, err
+	}
+	err = r.st.List(ctx, func(info store.ObjectInfo) error {
 		res.Checked++
-		if err := r.checkOne(ctx, info, &res); err != nil {
+		if err := r.checkOne(ctx, info, &res, exempt); err != nil {
 			return err
 		}
 		return nil
@@ -42,7 +48,7 @@ func (r *Repo) FSCK(ctx context.Context) (FSCKResult, error) {
 	return res, nil
 }
 
-func (r *Repo) checkOne(ctx context.Context, info store.ObjectInfo, res *FSCKResult) error {
+func (r *Repo) checkOne(ctx context.Context, info store.ObjectInfo, res *FSCKResult, exempt map[string]bool) error {
 	data, kind, err := r.st.Get(ctx, info.Addr)
 	if err != nil {
 		res.add(info, fmt.Sprint(err))
@@ -59,10 +65,38 @@ func (r *Repo) checkOne(ctx context.Context, info store.ObjectInfo, res *FSCKRes
 		r.checkTreeEntries(ctx, info, data, res)
 		return nil
 	}
+	if kind == object.KindSnapshot {
+		return r.checkSnapshot(ctx, info, data, res, exempt)
+	}
 	kids, err := childrenOf(kind, data)
 	if err != nil {
 		res.add(info, fmt.Sprintf("解码失败: %v", err))
 		return nil
+	}
+	for _, a := range kids {
+		ok, err := r.st.Has(ctx, a)
+		if err != nil {
+			return err
+		}
+		if !ok {
+			res.add(info, fmt.Sprintf("引用对象缺失: %s", a))
+		}
+	}
+	return nil
+}
+
+// checkSnapshot 校验快照引用:Root/Parents 必须存在;Index 在被保留水位
+// 精简的快照上允许缺失(其余情况缺失即问题)。
+func (r *Repo) checkSnapshot(ctx context.Context, info store.ObjectInfo, data []byte, res *FSCKResult, exempt map[string]bool) error {
+	snap, err := object.DecodeSnapshot(data)
+	if err != nil {
+		res.add(info, fmt.Sprintf("解码失败: %v", err))
+		return nil
+	}
+	kids := []hash.Address{snap.Root}
+	kids = append(kids, snap.Parents...)
+	if snap.Index != "" && !exempt[string(info.Addr)] {
+		kids = append(kids, snap.Index)
 	}
 	for _, a := range kids {
 		ok, err := r.st.Has(ctx, a)

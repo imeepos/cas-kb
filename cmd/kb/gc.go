@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -13,14 +14,33 @@ import (
 )
 
 func cmdGC(ctx context.Context, args []string) error {
+	f, err := parseFlags(args, map[string]bool{"--keep-last": true})
+	if err != nil {
+		return err
+	}
 	r, s, err := openRepo(ctx)
 	if err != nil {
 		return err
 	}
 	defer s.Close()
-	res, err := r.GC(ctx)
-	if err != nil {
-		return err
+	var res repo.GCResult
+	if v := f.get("--keep-last", ""); v != "" {
+		n, cerr := strconv.Atoi(v)
+		if cerr != nil || n < 0 {
+			return fmt.Errorf("gc: --keep-last 需要非负整数,得到 %q", v)
+		}
+		res, err = r.GCWithKeepLast(ctx, n)
+		if err != nil {
+			return err
+		}
+		if n > 0 {
+			fmt.Printf("保留策略: 最近 %d 个快照的检索索引(更早快照的索引已精简,数据本体保留)\n", n)
+		}
+	} else {
+		res, err = r.GC(ctx)
+		if err != nil {
+			return err
+		}
 	}
 	fmt.Printf("GC: 标记 %d,清扫 %d\n", res.Marked, res.Swept)
 	return nil

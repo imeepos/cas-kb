@@ -133,5 +133,15 @@ step "再次 commit 无暂存";     has "(no staged changes)" "$($KB -p alpha co
 step "abort 丢弃暂存";        $KB -p alpha note set st/z --title Z --body z --stage >/dev/null; out=$($KB -p alpha commit --abort); has "暂存已丢弃" "$out"
 if echo "$($KB -p alpha note ls)" | grep -qF "st/z"; then echo "断言失败: abort 后不应有 st/z"; exit 1; fi
 
+# ---- 历史保留(gc --keep-last)----
+PREV=$($KB -p alpha log | head -1 | awk '{print $1}')
+step "造 12 个提交";          for i in $(seq 1 12); do $KB -p alpha note set hist/n$i --title H$i --body "b$i" -m "h$i" >/dev/null; done
+step "gc --keep-last 10";    out=$($KB -p alpha gc --keep-last 10); has "保留策略: 最近 10 个快照" "$out"
+step "head 数据可读";         has "H12" "$($KB -p alpha note get hist/n12)"
+step "head 检索可用";         out=$($KB -p alpha search H12 | head -1); has "hist/n12" "$out"
+step "旧快照数据保留";         has "SA" "$($KB -p alpha note get st/a --at "$PREV")"
+step "被精简快照检索友好报错";  out=$($KB -p alpha search H12 --at "$PREV" 2>&1) || true; has "已被 gc 精简" "$out"
+step "fsck 水印豁免";         has "完整,无问题" "$($KB -p alpha fsck)"
+
 step "gc + fsck";            out=$($KB gc); has "已备份" "$out"; has "完整,无问题" "$($KB fsck)"
 echo "E2E_GREEN"
