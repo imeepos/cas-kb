@@ -24,7 +24,8 @@ func usage() {
 		"  kb log\n" +
 		"  kb stage | kb commit [-m msg] [--abort]  # 暂存工作流:--stage 变更累积,commit 一次提交\n" +
 		"  kb diff <base> <tip> [--json]  # base/tip 可为分支名、地址或短标识(kb log 首列);JSON 行含 path/type/from/to\n" +
-		"  kb pull [remoteDsn] [--force]\n" +
+		"  kb pull [remoteDsn] [--force | --merge]  # 分叉时 --merge 三方合并(冲突建 <branch>-merge 中间态,退出码非零),--force 覆盖回退,二者互斥\n" +
+		"  kb merge --continue [-m msg] | --abort  # 收束合并中间态:--continue 裁决后落双亲合并快照,--abort 放弃并回到合并前\n" +
 		"  kb gc [--keep-last K]  # 垃圾回收;--keep-last 只保留最近 K 个快照的检索索引\n" +
 		"  kb fsck\n" +
 		"  kb index rebuild [-m msg]  # 从当前快照全量重建检索索引(M4)\n" +

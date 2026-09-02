@@ -60,6 +60,8 @@ func main() {
 		must(cmdDiff(ctx, args[1:]))
 	case "pull":
 		must(cmdPull(ctx, args[1:]))
+	case "merge":
+		must(cmdMerge(ctx, args[1:]))
 	case "gc":
 		must(cmdGC(ctx, args[1:]))
 	case "fsck":

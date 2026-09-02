@@ -39,7 +39,8 @@ func cmdCommit(ctx context.Context, args []string) error {
 	return nil
 }
 
-// cmdStage 查看暂存清单。
+// cmdStage 查看暂存清单;合并中态切换为展示合并裁决清单(调研 §4-4:
+// 防止把合并裁决误当普通暂存)。
 // 用法: kb stage
 func cmdStage(ctx context.Context, args []string) error {
 	r, s, err := openRepo(ctx)
@@ -47,6 +48,13 @@ func cmdStage(ctx context.Context, args []string) error {
 		return err
 	}
 	defer s.Close()
+	ms, err := r.MergeState(ctx)
+	if err != nil {
+		return err
+	}
+	if ms != nil {
+		return printMergeStatus(ms)
+	}
 	changes, err := r.StageStatus(ctx)
 	if err != nil {
 		return err
