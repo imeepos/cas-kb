@@ -164,10 +164,14 @@ HTTP API(AI/Agent 免 shell 消费与写入;DESIGN §8.5/§8.6):
     KB_TEST_DSN=postgres://... ./scripts/verify.sh       # 设置后追加 PostgreSQL 集成回归;每个用例派生独立临时库
     ./scripts/drill-multi.sh                             # 多端互写演练(T42 剧本固化,TAP 式逐腿断言;独立跑,季度/发版前)
     ./scripts/drill-serve.sh                             # serve 运维演练(T43 剧本固化,绑定/令牌/鉴权/503;独立跑,季度/发版前)
+    ./scripts/regression.sh                              # 季度/发版前全量回归:verify → drill-multi → drill-serve,逐段 ok/not ok,任一失败整体非零
+    ./scripts/session-watch.sh                           # 会话心跳巡检:会话分支最近 commit 年龄,>90min 标 STALE 且退出非零(纪律见 AGENTS.md)
     ./scripts/e2e.sh                                     # 端到端验收(默认 SQLite 临时库):完整生命周期
     ./scripts/e2e.sh postgres://...                      # 同一生命周期跑 PostgreSQL 后端(含 pg_dump 备份路径)
     ./scripts/backup.sh [DSN]                            # 库备份 → backups/(git 忽略),文件名含库版本与时间戳
     ./scripts/restore.sh <backup.sql> <目标库>           # 恢复到全新库;旧 schema 备份会提示配套二进制
+
+> 回归调度与产物归档(T57):`regression.sh` 按两档频率必跑——**季度**(launchd 任务 `docs/launchd/com.caskb.regression.plist`:1/4/7/10 月 1 日 02:00,ProgramArguments 数组式直指脚本、不经 sh -c,交付前 `plutil -lint` 通过)与**每次发版前**(发版 checklist 项)。产物分两类归档:**报告**(结论:日期/工作树/HEAD/逐段结果/VERDICT)入 `docs/review/`(入 git,沿 drill-*.md 惯例);**日志**(现场全文,脚本自动 tee 到 `/tmp/regression-<时间戳>.log`)留临时目录、不入 git、定期清理——报告讲结论,日志留现场。
 
 > 提示:仓库根目录的 `kb` 二进制不会随源码自动更新,`git pull` 后执行 `go build -o kb ./cmd/kb` 重建;Release 安装的二进制则可用 `./kb update --yes` 在线升级;`./kb --help` / `-h` 随时查看当前用法。
 

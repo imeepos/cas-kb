@@ -114,13 +114,15 @@ leg1() {
   failrun "无共同历史" ka -p alpha pull "sqlite:$dir/b.db"
   failrun "--allow-unrelated" ka -p alpha pull "sqlite:$dir/b.db" --merge
   # 空基线合并:零冲突落库 + 冷启动完成提示(T47-D)
-  local bhead out parents
+  local ahead bhead out parents
+  ahead="$(ka -p alpha log | head -1 | awk '{print $1}')"
   bhead="$(kb -p alpha log | head -1 | awk '{print $1}')"
   out="$(ka -p alpha pull "sqlite:$dir/b.db" --merge --allow-unrelated)"
   need "冲突 0 条" "$out"
   need "合并快照 sha256:" "$out"
   need "冷启动完成" "$out"
   parents="$(ka -p alpha log | head -1 | grep -oE 'parent=[^ ]+')"
+  echo "$parents" | grep -qF "$ahead" || { echo "断言失败: 合并快照双亲应含 ours 头 $ahead(与 theirs 断言对称,T57-C): $parents"; exit 1; }
   echo "$parents" | grep -qF "$bhead" || { echo "断言失败: 合并快照双亲应含 theirs 头 $bhead: $parents"; exit 1; }
   echo "$parents" | grep -q "," || { echo "断言失败: 合并快照应双亲: $parents"; exit 1; }
   # 跨侧内容可检索(CJK 2-gram 取对侧标题词元)
@@ -166,6 +168,7 @@ leg2() {
   need "合并完成" "$out"
   need "1 条裁决" "$out"
   parents="$(ka -p alpha log | head -1 | grep -oE 'parent=[^ ]+')"
+  echo "$parents" | grep -qF "$ahead" || { echo "断言失败: 收束快照双亲应含 ours 头 $ahead(与 theirs 断言对称,T57-C): $parents"; exit 1; }
   echo "$parents" | grep -q "," || { echo "断言失败: 收束快照应双亲: $parents"; exit 1; }
   need "裁决稿" "$(ka -p alpha note get shared/decision)"
   need "完整,无问题" "$(ka fsck)"

@@ -438,7 +438,7 @@ cas-kb/
 | `/api/v1/tree` | `at`(短标识/分支名,省略=分支头) | 当前项目层级树(嵌套:dir 带 children,note 带 addr/title) | at 不存在 404;歧义 400 |
 | `/api/v1/note` | `path` 必填,`at` | 单条笔记(正文原文 + 派生摘要,tags 归一 `[]`) | 缺/坏 path 400;类型冲突 400;不存在 404 |
 | `/api/v1/search` | `q` 必填,`at`、`limit`(正整数)、`snippet=1`、`mode`(可选 `hybrid`,缺省=纯词法) | BM25 检索,`search --json` 同构;limit 只截断不重排;`snippet=1` 附片段字段;`mode=hybrid` 与 `--hybrid` 同语义(RRF 融合,score 为融合分,行内附 `mode` 字段) | 缺 q / limit 非法 / mode 非法取值 400;at 不存在 404;hybrid 前置/执行失败(未配置 KB_EMBED_*、快照无向量、模型不一致、嵌入失败)409 |
-| `/api/v1/log` | `limit`(正整数) | 快照链(最新在前):id/time/message/parents,短标识与 CLI 同长 | limit 非法 400 |
+| `/api/v1/log` | `limit`(正整数) | 快照链(最新在前):id/time/message/parents,短标识与 CLI 同长;合并快照 `parents=[ours,theirs]`(首亲=本地头、次亲=远端头;base 是 LCA 不进 parents),与 `/api/v1/merge-state` 的 `ours`/`theirs` 可交叉验证(T57-C 注记) | limit 非法 400 |
 | `/api/v1/diff` | `from`、`to` 必填 | A/D/M 按全路径,`diff --json` 同构 | 缺参 400;引用不存在 404;歧义 400 |
 | `/api/v1/merge-state` | `project`、`branch`(省略=serve 作用域与默认分支) | 合并中间态查询(T48),`kb stage --json` 同构:`state ∈ idle\|merging` + 派生布尔 `can_continue`/`can_abort` + 事实字段 `base`/`theirs`/`ours`/`conflicts[]`/`conflict_count`/`merged_branch`;idle=200 轮询稳态(事实字段 null、conflicts 空数组、两布尔 false),合并态事实取中间态 meta 键,conflicts 与 CLI 冲突清单同契约 | 项目/分支不存在 404;参数空白 400 |
 
