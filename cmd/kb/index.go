@@ -9,7 +9,7 @@ import (
 
 // cmdIndex 处理 kb index 子命令(目前仅 rebuild)。
 // --embed:在 BM25 索引之外全量重建语义向量索引(M6-A);
-// 嵌入服务未配置(KB_EMBED_MODEL 未设置)时 embed.FromEnv 给可行动报错。
+// 嵌入服务未配置(KB_EMBED_MODEL 未设置)时 embed.ProviderFromEnv 给可行动报错。
 func cmdIndex(ctx context.Context, args []string) error {
 	if len(args) < 1 || args[0] != "rebuild" {
 		return fmt.Errorf("用法: kb index rebuild [-m msg] [--embed]")
@@ -24,7 +24,7 @@ func cmdIndex(ctx context.Context, args []string) error {
 	}
 	defer s.Close()
 	if f.has("--embed") {
-		emb, err := embed.FromEnv()
+		emb, err := embed.ProviderFromEnv()
 		if err != nil {
 			return err
 		}

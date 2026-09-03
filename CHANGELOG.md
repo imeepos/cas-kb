@@ -3,6 +3,11 @@
 本文件记录面向用户的显著变更;格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 升级操作指引见 [docs/upgrade.md](docs/upgrade.md)。
 
+## Unreleased
+
+### Added
+- OpenAI 兼容嵌入适配器(M6-C/T58,DESIGN §7.3/§8.2):语义检索(`kb index rebuild --embed` 与 `kb search --hybrid`/`mode=hybrid`)除 Ollama 外新增 OpenAI 兼容端点——新配置 `KB_EMBED_PROVIDER ∈ {ollama, openai}`(缺省 ollama,`KB_EMBED_URL`/`KB_EMBED_MODEL` 现有行为零变化;非法取值响亮报错列出合法值)。`openai` 提供者 POST `{OPENAI_BASE_URL}/embeddings`(默认 `https://api.openai.com/v1`;base 带不带 `/v1`、带不带尾斜杠均可——规则:去尾斜杠后已以 /v1 结尾拼 /embeddings,否则拼 /v1/embeddings,兼容常见代理/网关两种习惯),`Authorization: Bearer $OPENAI_API_KEY`,请求体 `{"model": KB_EMBED_MODEL, "input": [texts]}`;响应 `data[]` 按 `index` 归位对齐输入顺序(OpenAI 兼容服务不保证数组序),数量/下标异常响亮报错;HTTP 超时 30s,错误文案含端点主机与下一步动作;**API key 只进请求头,不写日志不回显**(测试钉死)。向量内容含 model 名,跨提供者/跨模型天然不同址(同文本同向量、仅模型名不同 → 对象地址必不同,测试钉死)。**数据出域提示**:openai 提供者会把笔记标题与正文发送到 `OPENAI_BASE_URL` 主机——第三方托管端点属数据出域,内网敏感库用 ollama
+
 ## v0.8.0 - 2026-09-03
 
 ### Added
