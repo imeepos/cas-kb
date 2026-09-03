@@ -126,6 +126,11 @@ func (r *Repo) RebuildIndex(ctx context.Context, msg string) (hash.Address, hash
 			return "", "", err
 		}
 		snap.Parents = []hash.Address{head}
+		// tree 未变:头快照的向量索引仍有效,地址沿用到新快照
+		// (与 RebuildEmbeddings 沿用 Index 对称;内容变更路径不带 Vec)。
+		if hs, err := r.loadSnapshot(ctx, head); err == nil && hs.Vec != "" {
+			snap.Vec = hs.Vec
+		}
 	}
 	snapData, err := object.EncodeSnapshot(snap)
 	if err != nil {

@@ -18,7 +18,8 @@ var ErrNonEmptyLibrary = errors.New("repo: 目标库非空")
 
 // MinRestoreSchemaVersion 是可恢复备份的最低来源库版本。
 // 对象编码自 v4 起(带类型 tree 条目,M3.8)与当前完全兼容——v5 只放宽
-// kind 约束并给 snapshot 加可选 index 字段,v4 备份的每个对象都可原样导入;
+// kind 约束并给 snapshot 加可选 index 字段,v6 再放宽纳入向量对象(同样
+// 只是加 kind),v4 备份的每个对象都可原样导入;
 // 更早版本(v3 及以下)的 tree 字节无法被当前解码,恢复没有意义,仍拒绝。
 const MinRestoreSchemaVersion = 4
 

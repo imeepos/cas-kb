@@ -90,7 +90,7 @@ step "清理 .ckb";            rm -f "$BKF"
 
 # ---- 跨版本恢复(升级演练结论:header ∈ [4, 当前] 可恢复)----
 step "跨版本备份(header 改写为 v4)"; CVB=$($KB backup | grep -oE '[^ ]+\.ckb' | head -1)
-sed 's/"schema_version":5,/"schema_version":4,/' "$CVB" > cv4.ckb
+sed 's/"schema_version":6,/"schema_version":4,/' "$CVB" > cv4.ckb
 step "v4 备份恢复成功并提示升级"; out=$($KB restore cv4.ckb --force); has "恢复完成" "$out"; has "schema v4" "$out"
 step "跨版本恢复后数据可读";   has "A1" "$($KB -p alpha note ls)"
 step "清理跨版本产物";         rm -f cv4.ckb "$CVB"
@@ -120,6 +120,8 @@ step "link resolve 全路径";   out=$($KB -p alpha link resolve go/searching/in
 step "link resolve 叶名回退"; out=$($KB -p alpha link resolve task); has "path:  task" "$out"
 step "index rebuild";        out=$($KB -p alpha index rebuild); has "index sha256:" "$out"
 step "rebuild 后检索可用";    out=$($KB -p alpha search BM25); has "go/searching/index" "$out"
+# M6-A:未配置嵌入服务时 --embed 给可行动报错(退出码非零,不静默跳过)
+step "rebuild --embed 未配置报错"; if out=$($KB -p alpha index rebuild --embed 2>&1); then echo "断言失败: 未配置 KB_EMBED_MODEL 应报错"; exit 1; else has "KB_EMBED_MODEL" "$out"; fi
 step "fsck 通过(索引可达)";   has "完整,无问题" "$($KB fsck)"
 
 # ---- 批量导入(压测根治:单快照+一次索引增量)----

@@ -2,7 +2,7 @@
 
 每个里程碑交付可独立验收的能力;验收标准即测试用例的来源。
 
-> 状态:M1–M3.10 已交付并通过验收(M3.10=存储后端可插拔:SQLite 默认、PostgreSQL 可选);M3.11=dir tree 全库视图(展示层增量)已交付;M4 CLI 部分已交付(倒排索引纳入快照 + kb search / link resolve / index rebuild,schema v5);M3.12=Markdown 互操作(export md / import md,增量)已交付;M4 增补=gc --keep-last K 历史保留水位(历史索引精简)已交付;M4 收尾=只读 HTTP API(kb serve,DESIGN §8.5)已交付;M4.1=写入型 HTTP API(kb serve 写端点,令牌鉴权,DESIGN §8.6)已交付;M4.2=检索片段高亮(纯展示层增量:--snippet / snippet=1,DESIGN §7.1)已交付;M5=三方合并(pull --merge,repo 内核 A 批次 + CLI/中间态/收束 B 批次,DESIGN §6.3)已交付;T44=多端冷启动修复(pull 空远端「已是最新」空操作 + `--merge --allow-unrelated` 空基线合并 + 无共同历史文案分流,DESIGN §6.2/§6.3)已交付。
+> 状态:M1–M3.10 已交付并通过验收(M3.10=存储后端可插拔:SQLite 默认、PostgreSQL 可选);M3.11=dir tree 全库视图(展示层增量)已交付;M4 CLI 部分已交付(倒排索引纳入快照 + kb search / link resolve / index rebuild,schema v5);M3.12=Markdown 互操作(export md / import md,增量)已交付;M4 增补=gc --keep-last K 历史保留水位(历史索引精简)已交付;M4 收尾=只读 HTTP API(kb serve,DESIGN §8.5)已交付;M4.1=写入型 HTTP API(kb serve 写端点,令牌鉴权,DESIGN §8.6)已交付;M4.2=检索片段高亮(纯展示层增量:--snippet / snippet=1,DESIGN §7.1)已交付;M5=三方合并(pull --merge,repo 内核 A 批次 + CLI/中间态/收束 B 批次,DESIGN §6.3)已交付;T44=多端冷启动修复(pull 空远端「已是最新」空操作 + `--merge --allow-unrelated` 空基线合并 + 无共同历史文案分流,DESIGN §6.2/§6.3)已交付;M6-A=向量对象模型与嵌入重建(vecshard/vecroot + Embedder 适配器 + kb index rebuild --embed,schema v6,DESIGN §7.3;检索面属 M6-B 未做)已交付。
 
 ## M1 存储内核
 
@@ -222,3 +222,27 @@
 - `./scripts/e2e.sh`(新增 merge 段)
 
 **状态**:已交付(A 批次:internal/repo/merge.go + TestMerge*;B 批次:internal/repo/mergestate.go + TestMergeState*、cmd/kb pull --merge / merge --continue|--abort / stage 合并态 / log 双亲 + TestMergeCLI*、scripts/e2e.sh 合并段全绿;T44 冷启动批次:internal/repo TestMergeCold* + cmd/kb TestMergeColdCLI* + e2e coldstart 段全绿——空远端空操作 + --merge --allow-unrelated 空基线合并 + 分叉文案分流)。
+
+## M6-A 向量对象模型与嵌入重建(T54,已交付)
+
+**范围**(DESIGN §7.3/§4.9;四条红线:不内嵌模型运行时 / 不引入向量数据库 / 向量按 model_id 版本化入内容 / 不做检索集成——默认检索仍是 BM25,检索面属 M6-B):对象模型两类新 kind(schema v6)——`vecshard` 规范 JSON `{kind, model, dim, items:[{path, vec}]}`,字段定序、items 按路径排序、float32 向量按 little-endian 拼接后 base64(跨平台逐字节确定);分桶 FNV-1a(全路径)%64 与 indexshard 同构;`vecroot` 照 indexroot 范本列各桶地址(model/dim 入内容故跨模型必不同址);snapshot 加可选 `vec`(omitempty,无向量快照编码逐字节不变);两份 DDL kind 约束放宽 + meta 播种 6 + v5 库拒开门禁 + v6 解码拒绝不匹配编码。Embedder 适配器(internal/embed)——`Embedder{Model/Dim/Embed}` 接口 + Ollama `/api/embed` 适配器(字段名与批量顺序语义经官方文档 docs/api.md@b79067b 核实写入注释;HTTP 超时 30s;KB_EMBED_MODEL 未设置=功能整体关闭给可行动报错,不静默跳过)。重建与配套——`kb index rebuild --embed` 全量重建(标题+正文逐条嵌入、按桶聚合写对象、快照带 vec 落库、BM25 地址沿用;嵌入失败响亮中止可重试);fsck 向量一致性(分片 model/dim 与根一致、items 路径存在于对应快照,无 vec 快照跳过不报);GC 与 indexshard 同规则可达回收(gc.keep_last 同精简);vecshard/vecroot 走 store gzip 压缩同待遇。
+
+**验收标准**(与测试一一对应,名字含 Vector)
+
+- 编码确定性:同输入两次编码逐字节同址;float32 小端 base64 与手工字节一致;字段定序与 items 排序;快照 vec omitempty——`internal/object` TestVectorVecShardCanonicalEncoding / TestVectorVecBase64LittleEndian / TestVectorVecRootCanonicalEncoding / TestVectorSnapshotVecOmitEmpty
+- 跨模型不同址:model/dim 内嵌内容,换模型/换维度必换地址——`internal/object` TestVectorCrossModelDifferentAddr + `internal/repo` TestVectorRebuildCrossModelDifferentAddr
+- rebuild roundtrip(假 Embedder 固定向量,零网络):逐条嵌入输入=标题+空行+正文、分桶正确、向量逐位还原、幂等同址、嵌入失败响亮中止分支不动、与 BM25 索引共存沿用——`internal/repo` TestVectorRebuildRoundtrip / TestVectorRebuildEmbedFailureAbortsLoudly / TestVectorRebuildCoexistsWithBM25
+- fsck 一致性:正常库零问题;items 路径缺失=fail;分片 model 与根不一致=fail;无 vec 快照跳过——`internal/repo` TestVectorFSCKConsistency
+- schema v6 门禁:v5 库拒开并指引重建——`internal/store` TestVectorSchemaV6GateRejectsV5Library
+- GC 同规则:悬垂向量对象清扫、可达保留、keep_last 水位与 BM25 一视同仁——`internal/repo` TestVectorGCSweepsAndKeeps
+- gzip 兼容:大 vecshard 落库带 0x01 前缀、Get 逻辑字节一致、往返无损——`internal/store` TestVectorShardGzipCompressionCompat
+- Embedder 超时与错误文案:超时/HTTP 非 200/连接失败/数量不符全部含服务地址+模型+下一步动作;未配置给可行动报错——`internal/embed` TestVectorEmbed*(六项)
+- CLI 端到端(本地 httptest 假 Ollama,零外网):rebuild --embed 输出 vec/snapshot、fsck 通过、BM25 检索不变、未配置报错——`cmd/kb` TestVectorIndexRebuildEmbedCLI
+
+**验收命令**
+
+- `go test ./internal/repo/ ./internal/object/ ./internal/embed/ -run Vector -v`
+- `go test ./internal/store/ ./cmd/kb/ -run Vector -v`
+- `./scripts/verify.sh`
+
+**状态**:已交付(internal/object vector.go + EncodeVecBase64、internal/embed embed.go、internal/repo vecbuild.go/fsck/gc/childrenOf、cmd/kb index.go --embed、schema v6 两份 DDL;上述 Vector 测试全绿,verify 全绿)。M6-B(检索面:查询嵌入、Top-K、与 BM25 融合)未开工,届时单独评审。

@@ -31,8 +31,15 @@ const (
 var compressionDisabled = os.Getenv("KB_COMPRESS") == "off"
 
 // compressible 报告该类型是否参与压缩。
+// M6-A 起 vecroot/vecshard 与 indexroot/indexshard 同待遇:同为高重复率
+// 规范 JSON 的索引类对象,是库体积膨胀大头,压缩收益同源。
 func compressible(kind object.Kind) bool {
-	return kind == object.KindIndexRoot || kind == object.KindIndexShard
+	switch kind {
+	case object.KindIndexRoot, object.KindIndexShard,
+		object.KindVecRoot, object.KindVecShard:
+		return true
+	}
+	return false
 }
 
 // encodeObjectData 写入前编码:可压缩类型且足够大时加前缀压缩,否则原样。

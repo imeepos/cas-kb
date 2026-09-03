@@ -15,7 +15,9 @@ import (
 // 本实现不做存量库自动迁移:版本不符时在执行任何 DDL 之前拒绝打开,
 // 老数据可弃则清库重建。
 // v5:M4 检索——objects.kind 约束放宽,新增 indexroot/indexshard(DESIGN §7)。
-const DBSchemaVersion = 5
+// v6:M6-A 向量对象模型——objects.kind 约束再放宽,新增 vecroot/vecshard
+// (DESIGN §7.3);snapshot 加可选 vec 字段。表结构与 v5 一致。
+const DBSchemaVersion = 6
 
 // Migrate 校验已有库版本(不符即在 DDL 前响亮拒绝),再对全新库执行 schema.sql。
 func Migrate(ctx context.Context, pool *pgxpool.Pool) error {

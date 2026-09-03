@@ -63,6 +63,22 @@ func childrenOf(kind object.Kind, data []byte) ([]hash.Address, error) {
 			}
 		}
 		return out, nil
+	case object.KindVecRoot:
+		vr, err := object.DecodeVecRoot(data)
+		if err != nil {
+			return nil, err
+		}
+		out := make([]hash.Address, 0, len(vr.Shards))
+		for _, a := range vr.Shards {
+			if a != "" {
+				out = append(out, a)
+			}
+		}
+		return out, nil
+	case object.KindVecShard:
+		// 向量项只存条目全路径(人类可读,同 note.links 的 slug 约定),
+		// 不存对象地址;路径与快照的对应关系由 fsck 按快照校验。
+		return nil, nil
 	default:
 		return nil, fmt.Errorf("repo: 未知 kind %q", kind)
 	}
