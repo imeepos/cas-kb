@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- cas-kb 季度回归 launchd 任务(T57-F;依据 docs/research/ops-patterns.md §3.3)。
+     触发:每季首日 02:00(1/4/7/10 月 1 日,StartCalendarInterval 四个字典,缺省键即通配)。
+     安装:cp docs/launchd/com.caskb.regression.plist ~/Library/LaunchAgents/ 并按主检出位置
+     调整 ProgramArguments 里的脚本绝对路径后 launchctl load;交付前已过 plutil -lint。
+     ProgramArguments 数组逐参数、直指脚本本体,不写 sh -c 复合串——从根上规避 T43 D1 的
+     XML && 转义问题。regression.sh 自身 tee 全量日志到 /tmp/regression-<时间戳>.log;
+     此处 StandardOut/ErrPath 只兜 launchd 层面的启动输出。 -->
+<plist version="1.0">
+<dict>
+	<key>Label</key>
+	<string>com.caskb.regression</string>
+	<key>ProgramArguments</key>
+	<array>
+		<string>/Users/imeepos/ext512/ymm-001/cas-kb/scripts/regression.sh</string>
+	</array>
+	<key>StartCalendarInterval</key>
+	<array>
+		<dict>
+			<key>Month</key>
+			<integer>1</integer>
+			<key>Day</key>
+			<integer>1</integer>
+			<key>Hour</key>
+			<integer>2</integer>
+			<key>Minute</key>
+			<integer>0</integer>
+		</dict>
+		<dict>
+			<key>Month</key>
+			<integer>4</integer>
+			<key>Day</key>
+			<integer>1</integer>
+			<key>Hour</key>
+			<integer>2</integer>
+			<key>Minute</key>
+			<integer>0</integer>
+		</dict>
+		<dict>
+			<key>Month</key>
+			<integer>7</integer>
+			<key>Day</key>
+			<integer>1</integer>
+			<key>Hour</key>
+			<integer>2</integer>
+			<key>Minute</key>
+			<integer>0</integer>
+		</dict>
+		<dict>
+			<key>Month</key>
+			<integer>10</integer>
+			<key>Day</key>
+			<integer>1</integer>
+			<key>Hour</key>
+			<integer>2</integer>
+			<key>Minute</key>
+			<integer>0</integer>
+		</dict>
+	</array>
+	<key>StandardOutPath</key>
+	<string>/tmp/caskb-regression.launchd.out.log</string>
+	<key>StandardErrorPath</key>
+	<string>/tmp/caskb-regression.launchd.err.log</string>
+</dict>
+</plist>
