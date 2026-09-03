@@ -343,6 +343,8 @@ cas-kb/
 
 **声明**:上文「三难权衡定论」维持原文——**无新 workload 证据不重启三难讨论**;本清单的价值恰是「到了触发线时有据可查」,而非提前立项。
 
+**实测行(T61 规模冒烟,2026-09,数据来源 docs/review/scale-smoke-embed.md)**:rebuild --embed 真模型实测——2000 条中文语料,Qwen3-Embedding-4B/2560 维:**163.3s 全量 / 81.6ms/条 / 63 批(32/批)/ 0 失败**;向量使库体积 7.7→43.0 MB(向量逻辑 29.1 MB,在役 19.8 MB);hybrid 检索 1.3–2.9s 平坦(查询嵌入 RTT 主导,词法对照 26–50ms);历史索引占比 36.5%,未触 80% 触发线(指标 2)。
+
 ### 7.3 语义检索(M6-A 对象模型 + M6-B 检索面 + M6-C 双提供者,已交付)
 
 **现状**:M6-A(T54)交付向量对象模型与嵌入重建——向量以 CAS 对象入库、随快照冻结;M6-B(T55)交付**检索面**:`kb search --hybrid` 与 `GET /api/v1/search?mode=hybrid`(BM25 + 向量余弦 RRF 融合),语义与两条出口逐字段同构(cmd/kb TestServeCLIParityHybrid 钉死);M6-C(T58)交付**OpenAI 兼容嵌入适配器**——`KB_EMBED_PROVIDER ∈ {ollama(缺省), openai}` 双提供者,openai 走 `OPENAI_BASE_URL` 的 `/v1/embeddings`(Bearer 鉴权,数据出域提示见 §8.2)。缺省检索仍是 BM25,`kb search` 行为零变化(评测同时断言语义增益与词法无损)。
@@ -363,7 +365,7 @@ cas-kb/
 
 **重建路径**:`kb index rebuild --embed`——逐条笔记(标题+空行+正文)嵌入、按桶聚合写分片与根、快照带 vec 落库(tree 未变故结构共享,BM25 索引地址沿用);嵌入失败响亮中止、分支指针不动(对象幂等可重试)。普通内容提交不带 vec(向量仅描述重建时刻的库),重跑 rebuild --embed 恢复;普通 `kb index rebuild` 反向沿用头快照 vec。**向量重建是显式操作**,不进写热路径。
 
-**运维配套**:fsck 校验分片 model/dim 与根一致、items 路径存在于对应快照(缺失=fail;无 vec 快照跳过不报);GC 对 vecroot/vecshard 与 indexshard 同规则可达回收(`gc.keep_last` 水位同精简);vecshard/vecroot 走 store 透明 gzip 压缩(仅 SQLite)。
+**运维配套**:fsck 校验分片 model/dim 与根一致、items 路径存在于对应快照(缺失=fail;无 vec 快照跳过不报);GC 对 vecroot/vecshard 与 indexshard 同规则可达回收(`gc.keep_last` 水位同精简);vecshard/vecroot 走 store 透明 gzip 压缩(仅 SQLite;按对象体量阈值触发,小对象保持明文——T61 实测:102KB 级 indexroot 被压,4–5KB 级 vecroot 保持明文;对高熵向量 gzip 仅省约 8%,机制透明保留、收益不指望)。
 
 **混合检索(M6-B 交付,repo.SearchHybrid 一份实现两条出口)**:
 - **RRF 融合**:BM25 词法腿与向量余弦语义腿**各取前 50 名**参与融合;融合分 `score = Σᵢ 1/(k + rankᵢ)`,k=**60**(社区通行常数,**固定不设旋钮**),rank 从 1 起两腿独立计数;输出按融合分降序,平局路径升序(与 BM25 排序规则同构;融合键是路径,天然唯一)。两条都未命中的条目不出现;仅单腿命中的条目拿单份贡献
@@ -374,7 +376,7 @@ cas-kb/
 - **serve 进程**:同样读 KB_EMBED_*;未配置不拦启动(其余端点零影响,启动横幅注明),mode=hybrid 请求届时按请求返回 409 + 配置指引
 - **评测集(tests/eval + internal/repo TestHybridEval)**:固定语料 23 条中文知识条目(同义不同词/上下位/中英混写/纯代码 ID 类)+ 15 条查询(12 语义 + 3 词法);假 Embedder 按「主题词→轴」手工固定表构造向量(语义近旁=共享主题轴)。断言:语义类查询 hybrid recall@5 逐条严格优于纯 BM25;代码/ID 类查询两模式都命中(词法无损)
 
-**演进项(未立项)**:融合权重/更多腿、Top-K 与阈值旋钮、暴力扫描的量级上限复核——触发条件沿用 §7/§7.2 的「新 workload 证据」纪律。
+**演进项(未立项)**:融合权重/更多腿、Top-K 与阈值旋钮、暴力扫描的量级上限复核——触发条件沿用 §7/§7.2 的「新 workload 证据」纪律。T61 实测(2000 条)为「维持词法默认」补了量化依据:hybrid 中位 2.4s vs 词法 26ms(≈90×,查询嵌入 RTT 主导)——若未来拟默认开语义,前提是先把查询嵌入 RTT 降下来(缓存/本地小模型)。
 
 ## 8. 部署与配置
 
