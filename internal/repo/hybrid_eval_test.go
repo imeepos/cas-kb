@@ -127,6 +127,26 @@ func TestHybridEval(t *testing.T) {
 	ctx := context.Background()
 	r := seedEvalCorpus(t)
 
+	// 评测集规模红线:≥20 条知识条目 + ≥10 条语义查询(验收口径固化)
+	sem, lex := 0, 0
+	for _, q := range evaleval.Queries {
+		switch q.Kind {
+		case "semantic":
+			sem++
+		case "lexical":
+			lex++
+		}
+	}
+	if len(evaleval.Entries) < 20 {
+		t.Fatalf("评测语料应 ≥20 条,得到 %d", len(evaleval.Entries))
+	}
+	if sem < 10 {
+		t.Fatalf("语义类查询应 ≥10 条,得到 %d", sem)
+	}
+	if lex < 1 {
+		t.Fatal("代码/ID 类查询应 ≥1 条")
+	}
+
 	var semBetter int
 	for _, q := range evaleval.Queries {
 		bm, err := r.Search(ctx, q.Text, "")
