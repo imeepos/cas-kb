@@ -343,12 +343,12 @@ cas-kb/
 
 **声明**:上文「三难权衡定论」维持原文——**无新 workload 证据不重启三难讨论**;本清单的价值恰是「到了触发线时有据可查」,而非提前立项。
 
-### 7.3 语义检索(M6-A 对象模型 + M6-B 检索面,已交付)
+### 7.3 语义检索(M6-A 对象模型 + M6-B 检索面 + M6-C 双提供者,已交付)
 
-**现状**:M6-A(T54)交付向量对象模型与嵌入重建——向量以 CAS 对象入库、随快照冻结;M6-B(T55)交付**检索面**:`kb search --hybrid` 与 `GET /api/v1/search?mode=hybrid`(BM25 + 向量余弦 RRF 融合),语义与两条出口逐字段同构(cmd/kb TestServeCLIParityHybrid 钉死)。缺省检索仍是 BM25,`kb search` 行为零变化(评测同时断言语义增益与词法无损)。
+**现状**:M6-A(T54)交付向量对象模型与嵌入重建——向量以 CAS 对象入库、随快照冻结;M6-B(T55)交付**检索面**:`kb search --hybrid` 与 `GET /api/v1/search?mode=hybrid`(BM25 + 向量余弦 RRF 融合),语义与两条出口逐字段同构(cmd/kb TestServeCLIParityHybrid 钉死);M6-C(T58)交付**OpenAI 兼容嵌入适配器**——`KB_EMBED_PROVIDER ∈ {ollama(缺省), openai}` 双提供者,openai 走 `OPENAI_BASE_URL` 的 `/v1/embeddings`(Bearer 鉴权,数据出域提示见 §8.2)。缺省检索仍是 BM25,`kb search` 行为零变化(评测同时断言语义增益与词法无损)。
 
 **四条红线(负责人裁决,不可越)**:
-1. **不内嵌模型运行时**:嵌入一律走外挂 HTTP 服务(internal/embed,Ollama 兼容 `/api/embed`);CLI 进程不加载任何模型权重
+1. **不内嵌模型运行时**:嵌入一律走外挂 HTTP 服务(internal/embed;Ollama 兼容 `/api/embed` 或 OpenAI 兼容 `/v1/embeddings`,`KB_EMBED_PROVIDER` 选择,M6-C);CLI 进程不加载任何模型权重
 2. **不引入向量数据库**:向量就是内容寻址对象(vecshard/vecroot),存储/GC/备份/同步全部继承现有 CAS 机制,不新增外部依赖
 3. **向量按 model_id 版本化入内容**:`model`/`dim` 写进 vecshard/vecroot 内容,跨模型必不同址;混版由 fsck 检出
 4. **BM25 默认不动**:词法检索是默认且不可降级的路径——hybrid 是显式可选旗标(`--hybrid` / `mode=hybrid`),缺省调用的输出与分数逐字节不变;评测集钉死语义增益的同时代码/ID 查询两模式都命中(无词法精度伤害)
@@ -359,7 +359,7 @@ cas-kb/
 - `vecroot`(根):`{kind, model, dim, shards[64]}`(桶号下标,空桶空串,照 indexroot 范本);root 的 model/dim 是 fsck 一致性基准
 - `snapshot.vec`(可选,`omitempty`)指向 vecroot;无向量快照编码逐字节不变
 
-**Embedder 契约(internal/embed)**:`Model()/Dim()/Embed(ctx, texts) ([]vector, error)`;Ollama 适配器 POST `{KB_EMBED_URL|http://127.0.0.1:11434}/api/embed`,请求 `{"model": KB_EMBED_MODEL, "input": [texts]}`,读 `embeddings` 数组(批量语义:每输入串一维、顺序一致——字段名与批量语义经官方文档 docs/api.md 核实并注释于代码);HTTP 超时 30s;**KB_EMBED_MODEL 未设置 = 向量功能整体关闭,入口给可行动报错,绝不静默跳过**(报错文案按场景给下一步指引:`FromEnvWithNext`/`NotConfiguredError`,检索面共用 `embed.NextHybridSearch`)。
+**Embedder 契约(internal/embed)**:`Model()/Dim()/Embed(ctx, texts) ([]vector, error)`;提供者由 `KB_EMBED_PROVIDER` 选择(缺省 `ollama`、可选 `openai`,入口统一经 `ProviderFromEnv`/`ProviderFromEnvWithNext` 分发,非法取值响亮报错列出合法值),两适配器实现同一接口、同一错误文案风格、同一 gzip/存储路径:① **Ollama 适配器** POST `{KB_EMBED_URL|http://127.0.0.1:11434}/api/embed`,请求 `{"model": KB_EMBED_MODEL, "input": [texts]}`,读 `embeddings` 数组(批量语义:每输入串一维、顺序一致——字段名与批量语义经官方文档 docs/api.md 核实并注释于代码);② **OpenAI 兼容适配器(M6-C)** POST `{OPENAI_BASE_URL|https://api.openai.com/v1}/embeddings`(拼接规则:base 去尾斜杠后已以 `/v1` 结尾则拼 `/embeddings`、否则拼 `/v1/embeddings`——兼容常见代理/网关两种习惯),请求头 `Authorization: Bearer $OPENAI_API_KEY`(key 只进请求头,**不写日志不回显**,缺失=响亮报错含设置方法),请求体同为 `{"model", "input":[texts]}`,响应 `data[]` **按 index 归位对齐输入顺序**(OpenAI 兼容服务不保证数组序,数量/下标异常响亮报错),维度=首条 embedding 长度。两提供者 HTTP 超时均 30s,错误文案含端点(主机)与下一步动作;**KB_EMBED_MODEL 未设置 = 向量功能整体关闭,入口给可行动报错,绝不静默跳过**(报错文案按场景给下一步指引:检索面共用 `embed.NextHybridSearch`)。向量内容含 model 名,跨提供者/跨模型天然不同址(测试钉死),无需额外隔离处理。
 
 **重建路径**:`kb index rebuild --embed`——逐条笔记(标题+空行+正文)嵌入、按桶聚合写分片与根、快照带 vec 落库(tree 未变故结构共享,BM25 索引地址沿用);嵌入失败响亮中止、分支指针不动(对象幂等可重试)。普通内容提交不带 vec(向量仅描述重建时刻的库),重跑 rebuild --embed 恢复;普通 `kb index rebuild` 反向沿用头快照 vec。**向量重建是显式操作**,不进写热路径。
 
@@ -368,7 +368,7 @@ cas-kb/
 **混合检索(M6-B 交付,repo.SearchHybrid 一份实现两条出口)**:
 - **RRF 融合**:BM25 词法腿与向量余弦语义腿**各取前 50 名**参与融合;融合分 `score = Σᵢ 1/(k + rankᵢ)`,k=**60**(社区通行常数,**固定不设旋钮**),rank 从 1 起两腿独立计数;输出按融合分降序,平局路径升序(与 BM25 排序规则同构;融合键是路径,天然唯一)。两条都未命中的条目不出现;仅单腿命中的条目拿单份贡献
 - **查询嵌入**:查询词经 Embedder 恰好 **1 次调用**(30s 上限,HTTP 与 ctx 双重超时);向量腿对快照 vec **分桶平扫**(桶号升序、分片内按路径升序,累加顺序固定)——量级判断沿用 §7 定论(≤十万条精确遍历优于 ANN,勿提前优化);零向量约定余弦为 0(排名退化为路径序,仍确定)
-- **失败语义(一律响亮报错,绝不静默降级)**:快照无 vec → 「该快照无向量索引,先 kb index rebuild --embed,或去掉 --hybrid 用词法检索」;快照 vecroot 的 model 与当前 Embedder.Model() 不一致(含查询向量维度不符)→ 指引重跑 `kb index rebuild --embed`(模型换了要重建);KB_EMBED_MODEL 未设置 → 可行动配置报错(设置方法四步);嵌入调用失败 → 原样上抛不降级。哨兵错误 `repo.ErrHybridNoVec/ErrHybridModelMismatch/ErrHybridEmbedFailed` 供 serve 映射 409
+- **失败语义(一律响亮报错,绝不静默降级)**:快照无 vec → 「该快照无向量索引,先 kb index rebuild --embed,或去掉 --hybrid 用词法检索」;快照 vecroot 的 model 与当前 Embedder.Model() 不一致(含查询向量维度不符)→ 指引重跑 `kb index rebuild --embed`(模型换了要重建);KB_EMBED_MODEL 未设置 → 可行动配置报错(设置方法四步;openai 提供者 OPENAI_API_KEY 缺失同口径响亮报错含设置方法);嵌入调用失败 → 原样上抛不降级。哨兵错误 `repo.ErrHybridNoVec/ErrHybridModelMismatch/ErrHybridEmbedFailed` 供 serve 映射 409
 - **确定性边界**:融合是纯函数——**同快照 + 同 model_id(同向量数据)→ 结果与顺序逐字段完全一致**;向量随模型版本变化,故可复现性边界 = 同快照 + 同 model_id(换模型重建后是新基准)。由假 Embedder(固定向量表)的单测与评测逐字节钉死
 - **契约增量(全部可选,向后兼容)**:CLI `kb search --hybrid`(文本输出同款,score 列为融合分);`--json` 行内增可选字段 `"mode":"hybrid"`(`omitempty`,仅 --hybrid 时存在,与 `--snippet` 可叠加);HTTP `GET /api/v1/search` 增可选参数 `mode=hybrid`(缺省=纯词法,契约不变;非法取值 400)。**hybrid 失败语义(serve)**:未配置 KB_EMBED_*/快照无向量/模型不一致/嵌入失败一律 **409** + 与 CLI 相同语义的错误 JSON(mode 参数非法为 400;口径见 §8.5 端点表)
 - **serve 进程**:同样读 KB_EMBED_*;未配置不拦启动(其余端点零影响,启动横幅注明),mode=hybrid 请求届时按请求返回 409 + 配置指引
@@ -396,11 +396,15 @@ cas-kb/
 | KB_PROJECT | `default` | 项目作用域:note/log/diff/gc/fsck 等命令只作用于该项目;亦可用 -p 按命令覆盖 |
 | KB_UPDATE_REPO | `imeepos/cas-kb` | `kb update` 检查的 GitHub 仓库(owner/name),也可 --repo 按次覆盖 |
 | GITHUB_TOKEN | (无) | 可选;GitHub API 令牌,缓解匿名限流(仅 update 使用,只作请求头) |
-| KB_EMBED_MODEL | (无) | 语义向量嵌入模型名(M6-A,如 nomic-embed-text);**未设置 = 向量功能整体关闭**(`kb index rebuild --embed` 与 `kb search --hybrid` 给可行动报错) |
-| KB_EMBED_URL | `http://127.0.0.1:11434` | 嵌入服务地址(Ollama 兼容 /api/embed);向量按 model 版本化入内容,换模型须重跑 rebuild --embed(`--hybrid`/`mode=hybrid` 同口径校验模型一致) |
+| KB_EMBED_PROVIDER | `ollama` | 嵌入提供者选择(M6-C):`ollama`(缺省,KB_EMBED_URL/KB_EMBED_MODEL 现有行为零变化)或 `openai`(OpenAI 兼容端点);非法取值响亮报错列出合法值 |
+| KB_EMBED_MODEL | (无) | 语义向量嵌入模型名(**两提供者通用必设**;ollama 如 nomic-embed-text,openai 如 text-embedding-3-small);**未设置 = 向量功能整体关闭**(`kb index rebuild --embed` 与 `kb search --hybrid` 给可行动报错) |
+| KB_EMBED_URL | `http://127.0.0.1:11434` | ollama 提供者的嵌入服务地址(POST /api/embed);向量按 model 版本化入内容,换模型须重跑 rebuild --embed(`--hybrid`/`mode=hybrid` 同口径校验模型一致) |
+| OPENAI_API_KEY | (无) | openai 提供者必设;只作 `Authorization: Bearer` 请求头,**不写日志不回显**(缺失=响亮报错含设置方法) |
+| OPENAI_BASE_URL | `https://api.openai.com/v1` | openai 提供者端点基址;带不带 `/v1`、带不带尾斜杠均可(规则:去尾斜杠后已以 /v1 结尾则拼 /embeddings,否则拼 /v1/embeddings——兼容常见代理/网关两种习惯) |
 
 指向 102 的示例(PG 后端):`postgres://caskb_app:<密码>@192.168.x.102:5432/caskb?sslmode=disable`。
 安全要求:专用账号 `caskb_app`(只授 caskb 库权限)、密码走 scram-sha-256、内网传输是否启用 TLS 按内网策略定;**凭据一律走环境变量,不入库不入仓**。
+**数据出域提示(M6-C)**:openai 提供者会把笔记标题与正文发送到 `OPENAI_BASE_URL` 主机;第三方托管端点属数据出域,内网敏感库用 ollama(本地服务,数据不出机)。
 
 ### 8.3 备份与恢复(正规化)
 

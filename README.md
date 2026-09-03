@@ -34,7 +34,7 @@
 - **M3.10 双后端**:默认 SQLite 文件库(零外部依赖);`KB_DSN=postgres://…` 切换 PostgreSQL;两后端同一套测试与 e2e 全绿,.ckb 备份可跨后端迁移
 - **M3.11 dir tree 全库视图**:不带 `-p` 时渲染全库树(项目为顶层节点,逐项目挂默认分支树)
 - **M4 CLI 检索**(schema v5):BM25 全文检索 `kb search`(字段加权 标题3/标签2/正文1,结果确定性可复现,`--at` 历史快照检索);`--snippet` 附命中片段(M4.2 展示层增量,命中词元以【】包裹,评分/排序零变化);倒排索引纳入快照(indexroot/indexshard,结构共享式增量);`kb index rebuild` 全量重建;`kb link resolve` 链接解析
-- **M6 混合检索**(M6-A 对象模型 + M6-B 检索面):`kb search --hybrid` 与 `/api/v1/search?mode=hybrid`——BM25 与向量余弦两路各取前 50 做 RRF 融合(k=60 固定常数),同义词/上下位/中英混写可召回;向量以内容寻址对象随快照冻结(vecshard/vecroot,schema v6),嵌入走外挂 Ollama 兼容服务(`KB_EMBED_MODEL` 必设 + `kb index rebuild --embed` 重建,换模型须重跑);**BM25 默认不动**(缺省调用零变化),评测集钉死语义增益的同时代码/ID 查询词法无损
+- **M6 混合检索**(M6-A 对象模型 + M6-B 检索面 + M6-C 双提供者):`kb search --hybrid` 与 `/api/v1/search?mode=hybrid`——BM25 与向量余弦两路各取前 50 做 RRF 融合(k=60 固定常数),同义词/上下位/中英混写可召回;向量以内容寻址对象随快照冻结(vecshard/vecroot,schema v6),嵌入走外挂服务——`KB_EMBED_PROVIDER=ollama`(缺省,Ollama 兼容 /api/embed)或 `openai`(OpenAI 兼容 /v1/embeddings,`OPENAI_API_KEY` 必设;会把笔记标题与正文发送到端点主机,第三方托管端点属数据出域,内网敏感库用 ollama),`KB_EMBED_MODEL` 必设 + `kb index rebuild --embed` 重建,换模型须重跑;**BM25 默认不动**(缺省调用零变化),评测集钉死语义增益的同时代码/ID 查询词法无损
 - **批量导入**:`kb bulk import <jsonl>` N 条笔记一次提交 + 一次索引增量(2000 条由逐条 103s/6.7GB 降至 350ms/11MB)
 - **Markdown 互操作**:`kb export md <目录>` 当前分支或 `--at` 历史快照导出为镜像 .md 文件树(front-matter + 正文原文字节,已存在整批拒绝、`--force` 覆盖);`kb import md <目录>` 递归导入(title 必填、tags 逗号分隔,问题文件整批响亮拒绝,一次提交一次索引增量);roundtrip 逐字节一致,写回零变更(地址不变)
 - **暂存工作流**:`note set/rm`、`dir rm --stage` 累积到暂存分支(单条成本恒定),`kb stage` 查看清单、`kb commit` 合入、`kb commit --abort` 丢弃
@@ -80,14 +80,16 @@
 
 混合检索(语义,可选;BM25 默认不动,--hybrid 显式开启):
 
-    # 前置两步:① 进程配置嵌入服务(KB_EMBED_MODEL 必设,KB_EMBED_URL 默认 http://127.0.0.1:11434)
-    #           ② 快照带向量索引:kb index rebuild --embed(先 ollama pull nomic-embed-text 之类拉模型)
-    export KB_EMBED_MODEL=nomic-embed-text
-    ./kb index rebuild --embed           # 逐条笔记嵌入,向量随快照冻结入库(显式操作,换模型须重跑)
+    # 前置两步:① 进程配置嵌入提供者(KB_EMBED_PROVIDER 缺省 ollama;两提供者都要求 KB_EMBED_MODEL 必设)
+    #   ollama:export KB_EMBED_MODEL=nomic-embed-text(KB_EMBED_URL 默认 http://127.0.0.1:11434,先 ollama pull 模型)
+    #   openai:export KB_EMBED_PROVIDER=openai KB_EMBED_MODEL=text-embedding-3-small OPENAI_API_KEY=<key>
+    #           (可选 OPENAI_BASE_URL,默认 https://api.openai.com/v1,带不带 /v1 均可;数据出域:笔记标题与正文会发送到端点主机)
+    # ② 快照带向量索引:kb index rebuild --embed(显式操作,换模型须重跑)
+    ./kb index rebuild --embed           # 逐条笔记嵌入,向量随快照冻结入库
     ./kb search 部署上线 --hybrid        # BM25 与向量余弦两路 RRF 融合(k=60),score 为融合分
     ./kb search 部署上线 --hybrid --json # 行内增可选字段 mode:"hybrid"(缺省不带,向后兼容)
     # 同义词/上下位/中英混写也能召回(词法检索完全无命中时仍可命中);
-    # 快照无向量或未配 KB_EMBED_* 时响亮报错(含 rebuild --embed 与设置方法指引),绝不静默降级
+    # 快照无向量或未配嵌入提供者时响亮报错(含 rebuild --embed 与设置方法指引),绝不静默降级
 
 版本与变更:
 

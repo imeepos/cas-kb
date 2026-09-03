@@ -14,10 +14,13 @@
    kb init
    kb restore caskb-v5-backup-<日期>.ckb --force
    ```
-3. **(可选)重建语义向量**(仅在需要向量能力时;须先配置嵌入服务):
+3. **(可选)重建语义向量**(仅在需要向量能力时;须先配置嵌入提供者,缺省 ollama):
    ```bash
    export KB_EMBED_MODEL=nomic-embed-text   # ollama pull nomic-embed-text
    kb index rebuild --embed
+   # 或 OpenAI 兼容端点(KB_EMBED_PROVIDER=openai;OPENAI_API_KEY 必设,
+   # 会把笔记标题与正文发送到 OPENAI_BASE_URL 主机——第三方托管端点属数据出域):
+   # export KB_EMBED_PROVIDER=openai KB_EMBED_MODEL=text-embedding-3-small OPENAI_API_KEY=<key>
    ```
    不配置嵌入服务时向量功能整体关闭,其余能力(含默认 BM25 检索)不受影响。
 4. **fsck 验证后重新导出备份**:
