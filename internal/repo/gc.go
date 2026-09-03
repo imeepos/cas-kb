@@ -209,6 +209,8 @@ func (r *Repo) snapshotDepths(ctx context.Context, branches []store.BranchRef) (
 
 // markSnapshotContent 标记一个快照的可达内容。深度 >= keep 时跳过其索引
 // (索引对象被清扫,历史条目本体=树/笔记/正文全部保留)。
+// M6-A 起 vecroot/vecshard 与 indexroot/indexshard 同规则:随快照可达保留,
+// 受 gc.keep_last 水位精简的快照其向量对象同样可被清扫。
 func (r *Repo) markSnapshotContent(ctx context.Context, addr hash.Address, d, keep int, marked map[string]bool) error {
 	if marked[string(addr)] {
 		return nil
@@ -223,6 +225,11 @@ func (r *Repo) markSnapshotContent(ctx context.Context, addr hash.Address, d, ke
 	}
 	if snap.Index != "" && (keep <= 0 || d < keep) {
 		if err := r.markReachable(ctx, snap.Index, marked); err != nil {
+			return err
+		}
+	}
+	if snap.Vec != "" && (keep <= 0 || d < keep) {
+		if err := r.markReachable(ctx, snap.Vec, marked); err != nil {
 			return err
 		}
 	}
@@ -243,7 +250,8 @@ func (r *Repo) markReachable(ctx context.Context, addr hash.Address, marked map[
 	var kids []hash.Address
 	switch kind {
 	case object.KindNote, object.KindTree, object.KindSnapshot,
-		object.KindIndexRoot, object.KindIndexShard:
+		object.KindIndexRoot, object.KindIndexShard,
+		object.KindVecRoot, object.KindVecShard:
 		kids, err = childrenOf(kind, data)
 		if err != nil {
 			return fmt.Errorf("repo: GC 解析 %s(%s): %w", addr, kind, err)
