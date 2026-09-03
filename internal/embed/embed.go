@@ -75,19 +75,36 @@ func NewOllama(baseURL, model string) *Ollama {
 // + KB_EMBED_MODEL。KB_EMBED_MODEL 未设置 = 向量功能整体关闭——返回可行动
 // 报错(绝不静默跳过),由入口原样呈现给用户。
 func FromEnv() (*Ollama, error) {
+	return FromEnvWithNext("4) 重试 kb index rebuild --embed")
+}
+
+// NextHybridSearch 是检索面(kb search --hybrid / mode=hybrid)未配置嵌入
+// 服务时的下一步指引,CLI 与 serve 共用一份文案(M6-B)。
+const NextHybridSearch = "4) 对已有库重跑 kb index rebuild --embed 生成向量;5) 重试 kb search --hybrid(或去掉 --hybrid/不传 mode=hybrid,用缺省词法检索)"
+
+// FromEnvWithNext 同 FromEnv,next 是未配置报错文案中的下一步动作——按调用
+// 场景给指引(重建向量:rebuild --embed;混合检索:search --hybrid)。
+func FromEnvWithNext(next string) (*Ollama, error) {
 	model := os.Getenv("KB_EMBED_MODEL")
 	if model == "" {
-		return nil, fmt.Errorf(
-			"embed: 向量功能未配置——KB_EMBED_MODEL 未设置,嵌入功能整体关闭。\n"+
-				"如需启用:1) 启动嵌入服务(如 ollama serve);2) 拉取嵌入模型(如 ollama pull nomic-embed-text);\n"+
-				"3) export KB_EMBED_MODEL=nomic-embed-text(可选 KB_EMBED_URL 指定服务地址,默认 %s);\n"+
-				"4) 重试 kb index rebuild --embed", DefaultURL)
+		return nil, NotConfiguredError(next)
 	}
 	url := os.Getenv("KB_EMBED_URL")
 	if url == "" {
 		url = DefaultURL
 	}
 	return NewOllama(url, model), nil
+}
+
+// NotConfiguredError 返回「向量功能未配置」的可行动错误(next 为下一步指引,
+// 见 NextHybridSearch)。导出供 serve 的 mode=hybrid 在未持有 Embedder 时
+// 生成与 CLI 同款文案(M6-B:错误语义两条出口一致)。
+func NotConfiguredError(next string) error {
+	return fmt.Errorf(
+		"embed: 向量功能未配置——KB_EMBED_MODEL 未设置,嵌入功能整体关闭。\n"+
+			"如需启用:1) 启动嵌入服务(如 ollama serve);2) 拉取嵌入模型(如 ollama pull nomic-embed-text);\n"+
+			"3) export KB_EMBED_MODEL=nomic-embed-text(可选 KB_EMBED_URL 指定服务地址,默认 %s);\n"+
+			"%s", DefaultURL, next)
 }
 
 // Model 返回模型名。

@@ -6,12 +6,14 @@
 ## Unreleased
 
 ### Added
+- 混合检索(M6-B/T55,DESIGN §7.3):`kb search --hybrid` 与 `GET /api/v1/search?mode=hybrid`(两条出口逐字段同构)——BM25 词法腿与向量余弦语义腿**各取前 50 名做 RRF 融合**(score = Σ 1/(60+rank),k=60 固定常数不设旋钮),输出融合分降序、平局路径升序;查询词经嵌入服务恰好 1 次调用(30s 上限);同义词/上下位/中英混写可召回(词法零命中仍可命中)。`--json` 行内增可选字段 `mode:"hybrid"`(`omitempty` 仅 --hybrid 时存在,score 为融合分,与 `--snippet` 可叠加);**BM25 默认不动**——缺省调用输出与分数逐字节不变。前置失败一律响亮报错绝不静默降级:快照无向量或模型不一致 → 指引 `kb index rebuild --embed`;`KB_EMBED_MODEL` 未设置 → 含设置方法的可行动报错;嵌入失败原样上抛。可复现性边界 = 同快照 + 同 model_id(同向量数据 → 结果与顺序逐字段确定)。API 失败语义:hybrid 前置/执行失败 409(与 CLI 同文案),`mode` 非法取值 400;serve 进程同读 `KB_EMBED_*`(未配置不拦启动,启动横幅注明)
+- 语义检索评测集(tests/eval):23 条中文知识条目固定语料(同义不同词/上下位/中英混写/纯代码 ID 类)+ 15 条查询(12 语义 + 3 词法),假 Embedder 按「主题词→轴」固定表构造向量;单测钉死语义类查询 hybrid recall@5 逐条严格优于纯 BM25(12/12 全 1.0 vs 最高 0.25)、代码/ID 类查询两模式都命中(词法无损)
 - 向量对象模型与嵌入重建(M6-A/T54,DESIGN §7.3,**schema v6**):新增 `vecshard`/`vecroot` 两类内容寻址对象与快照可选 `vec` 字段——语义向量随快照冻结入库,float32 按 little-endian 拼接后 base64 保证跨平台逐字节确定,`model`/`dim` 写进内容故**跨模型必不同址**;嵌入走外挂服务(不内嵌运行时、不引入向量数据库),`kb index rebuild --embed` 全量重建(逐条笔记标题+正文嵌入、FNV-1a(路径) 64 桶分片、快照带 vec 落库、BM25 索引地址沿用;嵌入失败响亮中止可重试);fsck 增向量一致性校验(分片 model/dim 与根一致、items 路径存在于对应快照,无 vec 快照跳过);GC 与 `gc.keep_last` 对向量对象与倒排索引同规则;vecshard/vecroot 走透明 gzip 压缩(SQLite 后端)
 - Embedder 适配器(internal/embed):`KB_EMBED_MODEL`(嵌入模型名,未设置=向量功能整体关闭并给可行动报错,不静默跳过)与 `KB_EMBED_URL`(Ollama 兼容 `/api/embed`,默认 `http://127.0.0.1:11434`)两个新配置项;HTTP 超时 30s,错误文案含服务地址/模型与下一步动作;Ollama 字段名与批量顺序语义经官方文档核实并注释于代码
 
 ### Changed
 - **库 schema 版本升至 6**(仅放宽 `objects.kind` 约束 + meta 播种值;表结构与 v5 一致):v5 存量库在新版本下**拒绝打开**并指引清库重建(不做自动迁移);老数据可弃则清库重建后 `kb init`,或留在旧版本二进制上继续使用
-- 本批不含语义检索面(查询嵌入/Top-K/与 BM25 融合属 M6-B):默认检索仍是 BM25,`kb search` 行为零变化
+- 混合检索为可选旗标,缺省检索仍是 BM25:`kb search`(不带 `--hybrid`)与 `/api/v1/search`(不带 `mode`)行为零变化(原 M6-A「本批不含语义检索面」说明随 M6-B 交付作废)
 
 ## v0.7.0 - 2026-09-03
 

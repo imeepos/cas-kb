@@ -93,6 +93,8 @@ func NoteLsRows(refs []*repo.NoteRef) []NoteLsRow {
 // 行序即检索的确定性排序(分数降序 → 路径升序 → 地址),调用方不得重排。
 // Snippet 为可选字段(M4.2 片段高亮):omitempty——仅调用方显式要求
 // (--snippet / snippet=1)时存在,缺省输出与旧契约逐字节一致,旧消费者零破坏。
+// Mode 为可选字段(M6-B 混合检索):omitempty——仅 --hybrid / mode=hybrid 时
+// 存在且值为 "hybrid"(score 输出 RRF 融合分),缺省字段整体不存在。
 type SearchRow struct {
 	Path    string   `json:"path"`
 	Slug    string   `json:"slug"`
@@ -102,6 +104,7 @@ type SearchRow struct {
 	Summary string   `json:"summary"`
 	Score   float64  `json:"score"`
 	Snippet string   `json:"snippet,omitempty"`
+	Mode    string   `json:"mode,omitempty"`
 }
 
 // SearchRows 由检索命中构造结果行(顺序保持入参序);不带 snippet 字段。
@@ -123,6 +126,16 @@ func SearchRowsWithSnippet(hits []repo.SearchHit, query string) []SearchRow {
 	rows := SearchRows(hits)
 	for i := range rows {
 		rows[i].Snippet = Snippet(hits[i].Body, query)
+	}
+	return rows
+}
+
+// WithMode 给结果行统一打上检索模式标记(M6-B):仅 --hybrid / mode=hybrid
+// 时调用(mode="hybrid");字段 omitempty,缺省输出与旧契约逐字节一致。
+// mode 与 snippet 可叠加(--hybrid --snippet),互不干扰。
+func WithMode(rows []SearchRow, mode string) []SearchRow {
+	for i := range rows {
+		rows[i].Mode = mode
 	}
 	return rows
 }

@@ -16,6 +16,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/imeepos/cas-kb/internal/embed"
 	"github.com/imeepos/cas-kb/internal/object"
 	"github.com/imeepos/cas-kb/internal/repo"
 	"github.com/imeepos/cas-kb/internal/store"
@@ -33,6 +34,10 @@ type Options struct {
 	// Token 是写入令牌(KB_SERVE_TOKEN/--token 解析后的值);空串=未配置,
 	// 服务保持纯只读,写端点一律 403。令牌只从内存比较,绝不写日志/回显。
 	Token string
+	// Embedder 是语义向量嵌入器(M6-B,KB_EMBED_* 解析结果);nil=未配置,
+	// mode=hybrid 请求届时返回 409 + 与 CLI 同款的可行动配置指引
+	//(不影响启动与其余端点,与「未配置令牌=纯只读」同一克制)。
+	Embedder embed.Embedder
 }
 
 // Server 持有一个已打开的仓库视图;读路径消费 repo/store 的读方法,
@@ -43,7 +48,8 @@ type Server struct {
 	backend string // sqlite | postgres
 	target  string // 展示目标(绝不含凭据)
 	project string
-	token   string // 空串=未配置写入令牌(纯只读模式)
+	token   string         // 空串=未配置写入令牌(纯只读模式)
+	emb     embed.Embedder // 空值=未配置嵌入服务(mode=hybrid 报 409)
 }
 
 // New 打开存储并构造 Server;调用方负责 Close。
@@ -54,7 +60,7 @@ func New(ctx context.Context, opts Options) (*Server, error) {
 	}
 	name, target := store.DescribeBackend(opts.DSN)
 	r := repo.Open(s, repo.Config{Project: opts.Project, Branch: opts.Branch})
-	return &Server{st: s, r: r, backend: name, target: target, project: r.Project(), token: opts.Token}, nil
+	return &Server{st: s, r: r, backend: name, target: target, project: r.Project(), token: opts.Token, emb: opts.Embedder}, nil
 }
 
 // Backend 返回后端名(sqlite|postgres)与展示目标(不含凭据),供启动横幅打印。
@@ -244,10 +250,14 @@ func (s *Server) handleNote(w http.ResponseWriter, r *http.Request) {
 	s.writeJSON(w, http.StatusOK, view.NoteRowOf(ref))
 }
 
-// handleSearch 服务 GET /api/v1/search?q=<查询>&at=&limit=&snippet= →
+// handleSearch 服务 GET /api/v1/search?q=<查询>&at=&limit=&snippet=&mode= →
 // search --json 同构;行序即检索的确定性排序,limit 只截断不重排。
 // snippet=1(M4.2 片段高亮)为可选展示参数:行内附带 snippet 字段(语义与
 // CLI --snippet 相同);缺省不带,契约与旧消费者零破坏(DESIGN §7.1)。
+// mode=hybrid(M6-B)为可选检索模式:语义与 CLI `--hybrid` 完全一致
+// (RRF 融合,score 为融合分,行内附带 mode 字段);缺省=纯词法,契约不变;
+// 其余 mode 取值 400。hybrid 的失败语义:未配置 KB_EMBED_*/快照无向量/模型
+// 不一致/嵌入失败一律 409 + 与 CLI 相同语义的错误文案(DESIGN §7.3/§8.5)。
 func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	query := q.Get("q")
@@ -260,7 +270,23 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, http.StatusBadRequest, err)
 		return
 	}
-	hits, err := s.r.Search(r.Context(), query, q.Get("at"))
+	mode := q.Get("mode")
+	if mode != "" && mode != "hybrid" {
+		s.writeError(w, http.StatusBadRequest, fmt.Errorf("参数 mode 仅支持 hybrid(缺省=词法检索),得到 %q", mode))
+		return
+	}
+	var hits []repo.SearchHit
+	if mode == "hybrid" {
+		emb := s.emb
+		if emb == nil {
+			// 与 CLI 同款可行动配置文案(含设置方法),绝不静默降级为词法
+			s.writeError(w, http.StatusConflict, embed.NotConfiguredError(embed.NextHybridSearch))
+			return
+		}
+		hits, err = s.r.SearchHybrid(r.Context(), query, q.Get("at"), emb)
+	} else {
+		hits, err = s.r.Search(r.Context(), query, q.Get("at"))
+	}
 	if err != nil {
 		s.fail(w, err)
 		return
@@ -268,6 +294,9 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 	rows := view.SearchRows(hits)
 	if q.Get("snippet") == "1" { // 仅字面 1 生效;片段是排序后附加的展示信息
 		rows = view.SearchRowsWithSnippet(hits, query)
+	}
+	if mode == "hybrid" { // mode 字段仅 hybrid 时存在(omitempty,向后兼容)
+		rows = view.WithMode(rows, mode)
 	}
 	if limit > 0 && limit < len(rows) {
 		rows = rows[:limit]
@@ -366,11 +395,15 @@ func parseLimit(raw string) (int, error) {
 }
 
 // fail 把 repo/store 错误映射为状态码:
-// 参数层面的(短标识歧义、路径段类型冲突)→ 400;目标不存在 → 404;其余 → 500。
+// 参数层面的(短标识歧义、路径段类型冲突)→ 400;hybrid 检索的前置/执行
+// 失败(快照无向量、模型不一致、嵌入调用失败)→ 409(与请求的混合检索
+// 模式冲突,DESIGN §7.3);目标不存在 → 404;其余 → 500。
 func (s *Server) fail(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, repo.ErrAmbiguousRef), errors.Is(err, repo.ErrEntryTypeConflict):
 		s.writeError(w, http.StatusBadRequest, err)
+	case errors.Is(err, repo.ErrHybridNoVec), errors.Is(err, repo.ErrHybridModelMismatch), errors.Is(err, repo.ErrHybridEmbedFailed):
+		s.writeError(w, http.StatusConflict, err)
 	case errors.Is(err, store.ErrNotFound), errors.Is(err, store.ErrBranchNotFound), errors.Is(err, store.ErrProjectNotFound):
 		s.writeError(w, http.StatusNotFound, err)
 	default:

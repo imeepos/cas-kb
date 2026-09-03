@@ -122,6 +122,8 @@ step "index rebuild";        out=$($KB -p alpha index rebuild); has "index sha25
 step "rebuild 后检索可用";    out=$($KB -p alpha search BM25); has "go/searching/index" "$out"
 # M6-A:未配置嵌入服务时 --embed 给可行动报错(退出码非零,不静默跳过)
 step "rebuild --embed 未配置报错"; if out=$($KB -p alpha index rebuild --embed 2>&1); then echo "断言失败: 未配置 KB_EMBED_MODEL 应报错"; exit 1; else has "KB_EMBED_MODEL" "$out"; fi
+# M6-B:未配置嵌入服务时 --hybrid 同样响亮报错(退出码非零,文案含 rebuild 指引与词法出路)
+step "search --hybrid 未配置报错"; if out=$($KB -p alpha search BM25 --hybrid 2>&1); then echo "断言失败: 未配置 KB_EMBED_MODEL 时 --hybrid 应报错"; exit 1; else has "KB_EMBED_MODEL" "$out"; has "rebuild --embed" "$out"; fi
 step "fsck 通过(索引可达)";   has "完整,无问题" "$($KB fsck)"
 
 # ---- 批量导入(压测根治:单快照+一次索引增量)----
@@ -195,6 +197,8 @@ step "serve api note 读单条";  has '"title": "A1"' "$(curl -sf "$SERVE_URL/ap
 step "serve api search 检索";  has '"path": "hist/n12"' "$(curl -sf -G "$SERVE_URL/api/v1/search" --data-urlencode 'q=H12')"
 step "serve api search snippet"; has '"snippet": "b12"' "$(curl -sf -G "$SERVE_URL/api/v1/search" --data-urlencode 'q=H12' --data-urlencode 'snippet=1')"
 step "serve api search 缺省无 snippet"; r=$(curl -sf -G "$SERVE_URL/api/v1/search" --data-urlencode 'q=H12'); if echo "$r" | grep -qF '"snippet"'; then echo "断言失败: 缺省不应带 snippet 字段"; exit 1; fi
+# M6-B:serve 未配置 KB_EMBED_* 时 mode=hybrid 按请求 409 + 可行动错误 JSON(与 CLI 同文案)
+step "serve mode=hybrid 未配置 409"; code=$(curl -s -o /tmp/kb-e2e-hybrid.json -w '%{http_code}' -G "$SERVE_URL/api/v1/search" --data-urlencode 'q=H12' --data-urlencode 'mode=hybrid'); [ "$code" = "409" ] || { echo "断言失败: mode=hybrid 未配置应 409,得到 $code: $(cat /tmp/kb-e2e-hybrid.json)"; exit 1; }; has "KB_EMBED_MODEL" "$(cat /tmp/kb-e2e-hybrid.json)"; rm -f /tmp/kb-e2e-hybrid.json
 step "serve 只读纪律 POST 403"; code=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$SERVE_URL/api/v1/note"); [ "$code" = "403" ] || { echo "断言失败: 未配置令牌 POST 应 403,得到 $code"; exit 1; }
 step "serve 只读模式文案";     rmsg=$(curl -s -X POST "$SERVE_URL/api/v1/note"); has "服务未配置写入令牌" "$rmsg"
 step "kill serve 优雅退出";    kill "$SERVE_PID"; wait "$SERVE_PID" || { echo "断言失败: serve 应优雅退出(退出码 0): $(cat "$SERVE_LOG")"; exit 1; }
