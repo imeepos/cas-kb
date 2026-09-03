@@ -21,34 +21,44 @@ type SearchHit struct {
 	Score float64
 }
 
+// snapshotFor 解析 ref(空=当前分支头)为快照;空库返回 has=false。
+// 词法(Search)与混合(SearchHybrid)检索共用同一解析,保证 --at 语义一致。
+func (r *Repo) snapshotFor(ctx context.Context, ref string) (*object.Snapshot, bool, error) {
+	if ref == "" {
+		head, has, err := r.head(ctx)
+		if err != nil {
+			return nil, false, err
+		}
+		if !has {
+			return nil, false, nil
+		}
+		s, err := r.loadSnapshot(ctx, head)
+		if err != nil {
+			return nil, false, err
+		}
+		return s, true, nil
+	}
+	addr, err := r.Resolve(ctx, ref)
+	if err != nil {
+		return nil, false, err
+	}
+	s, err := r.loadSnapshot(ctx, addr)
+	if err != nil {
+		return nil, false, err
+	}
+	return s, true, nil
+}
+
 // Search 在指定快照(缺省当前分支头)的检索索引上执行全文查询。
 // 结果确定性:同一快照,同一查询,结果与顺序完全一致(ROADMAP M4)。
 // 快照无索引(历史数据)时报错并指引 kb index rebuild。
 func (r *Repo) Search(ctx context.Context, query, ref string) ([]SearchHit, error) {
-	var snap *object.Snapshot
-	if ref == "" {
-		head, has, err := r.head(ctx)
-		if err != nil {
-			return nil, err
-		}
-		if !has {
-			return nil, nil
-		}
-		s, err := r.loadSnapshot(ctx, head)
-		if err != nil {
-			return nil, err
-		}
-		snap = s
-	} else {
-		addr, err := r.Resolve(ctx, ref)
-		if err != nil {
-			return nil, err
-		}
-		s, err := r.loadSnapshot(ctx, addr)
-		if err != nil {
-			return nil, err
-		}
-		snap = s
+	snap, has, err := r.snapshotFor(ctx, ref)
+	if err != nil {
+		return nil, err
+	}
+	if !has {
+		return nil, nil
 	}
 	if snap.Index == "" {
 		return nil, errors.New("repo: 该快照无检索索引,请先执行 kb index rebuild")

@@ -11,6 +11,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/imeepos/cas-kb/internal/embed"
 	"github.com/imeepos/cas-kb/internal/server"
 	"github.com/imeepos/cas-kb/internal/store"
 )
@@ -41,7 +42,13 @@ func cmdServe(ctx context.Context, args []string) error {
 	}
 	token := f.get("--token", os.Getenv(serveTokenEnv))
 	dsn := effectiveDSN()
-	p, err := startServe(ctx, addr, server.Options{DSN: dsn, Project: projectName(), Branch: branchName(), Token: token})
+	// 语义检索(M6-B):serve 进程同样读 KB_EMBED_*;未配置不拦启动(其余
+	// 端点零影响),mode=hybrid 请求届时返回 409 + 配置指引
+	emb, embErr := embed.FromEnv()
+	if embErr != nil {
+		emb = nil
+	}
+	p, err := startServe(ctx, addr, server.Options{DSN: dsn, Project: projectName(), Branch: branchName(), Token: token, Embedder: emb})
 	if err != nil {
 		return err
 	}
@@ -50,6 +57,11 @@ func cmdServe(ctx context.Context, args []string) error {
 		fmt.Printf("kb serve 只读 HTTP API(未配置写入令牌,纯只读)\n")
 	} else {
 		fmt.Printf("kb serve 写入型 HTTP API(已配置写入令牌,写端点需 Bearer 鉴权)\n")
+	}
+	if embErr != nil {
+		fmt.Printf("语义检索未启用(未配置 KB_EMBED_*;mode=hybrid 请求将返回 409 与配置指引)\n")
+	} else {
+		fmt.Printf("语义检索已启用(mode=hybrid;嵌入模型 %s)\n", emb.Model())
 	}
 	fmt.Printf("后端 %s(%s)\n项目作用域 %s(分支 %s)\n监听 http://%s\n", name, target, p.Project(), p.Branch(), p.Addr().String())
 	fmt.Printf("Ctrl-C 优雅退出\n")
