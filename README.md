@@ -9,9 +9,10 @@
 | 文档 | 内容 |
 |---|---|
 | [DESIGN.md](DESIGN.md) | 完整设计:对象模型、存储设计、同步协议、GC、检索、部署与权衡 |
-| [schema.sql](schema.sql) | PostgreSQL 数据模型 DDL 规格(schema v5,含项目隔离、AI 选用描述与目录层级) |
-| [schema_sqlite.sql](schema_sqlite.sql) | SQLite 数据模型 DDL(schema.sql 的语义镜像,双后端共用 schema v5) |
-| [ROADMAP.md](ROADMAP.md) | 落地路线图:M1–M4 里程碑与验收标准 |
+| [skills/cas-kb/SKILL.md](skills/cas-kb/SKILL.md) | **Agent 技能**:让 AI 会话正确操作知识库(写入/检索/多机同步/运维速查与报错处置表) |
+| [schema.sql](schema.sql) | PostgreSQL 数据模型 DDL 规格(schema v6,含项目隔离、AI 选用描述与目录层级) |
+| [schema_sqlite.sql](schema_sqlite.sql) | SQLite 数据模型 DDL(schema.sql 的语义镜像,双后端共用 schema v6) |
+| [ROADMAP.md](ROADMAP.md) | 落地路线图:M1–M6 里程碑与验收标准 |
 
 ## 核心思想(30 秒版)
 
