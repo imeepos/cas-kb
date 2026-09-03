@@ -2,7 +2,7 @@
 
 每个里程碑交付可独立验收的能力;验收标准即测试用例的来源。
 
-> 状态:M1–M3.10 已交付并通过验收(M3.10=存储后端可插拔:SQLite 默认、PostgreSQL 可选);M3.11=dir tree 全库视图(展示层增量)已交付;M4 CLI 部分已交付(倒排索引纳入快照 + kb search / link resolve / index rebuild,schema v5);M3.12=Markdown 互操作(export md / import md,增量)已交付;M4 增补=gc --keep-last K 历史保留水位(历史索引精简)已交付;M4 收尾=只读 HTTP API(kb serve,DESIGN §8.5)已交付;M4.1=写入型 HTTP API(kb serve 写端点,令牌鉴权,DESIGN §8.6)已交付;M4.2=检索片段高亮(纯展示层增量:--snippet / snippet=1,DESIGN §7.1)已交付;M5=三方合并(pull --merge,repo 内核 A 批次 + CLI/中间态/收束 B 批次,DESIGN §6.3)已交付;T44=多端冷启动修复(pull 空远端「已是最新」空操作 + `--merge --allow-unrelated` 空基线合并 + 无共同历史文案分流,DESIGN §6.2/§6.3)已交付;M6-A=向量对象模型与嵌入重建(vecshard/vecroot + Embedder 适配器 + kb index rebuild --embed,schema v6,DESIGN §7.3;检索面属 M6-B 未做)已交付。
+> 状态:M1–M3.10 已交付并通过验收(M3.10=存储后端可插拔:SQLite 默认、PostgreSQL 可选);M3.11=dir tree 全库视图(展示层增量)已交付;M4 CLI 部分已交付(倒排索引纳入快照 + kb search / link resolve / index rebuild,schema v5);M3.12=Markdown 互操作(export md / import md,增量)已交付;M4 增补=gc --keep-last K 历史保留水位(历史索引精简)已交付;M4 收尾=只读 HTTP API(kb serve,DESIGN §8.5)已交付;M4.1=写入型 HTTP API(kb serve 写端点,令牌鉴权,DESIGN §8.6)已交付;M4.2=检索片段高亮(纯展示层增量:--snippet / snippet=1,DESIGN §7.1)已交付;M5=三方合并(pull --merge,repo 内核 A 批次 + CLI/中间态/收束 B 批次,DESIGN §6.3)已交付;T44=多端冷启动修复(pull 空远端「已是最新」空操作 + `--merge --allow-unrelated` 空基线合并 + 无共同历史文案分流,DESIGN §6.2/§6.3)已交付;M6-A=向量对象模型与嵌入重建(vecshard/vecroot + Embedder 适配器 + kb index rebuild --embed,schema v6,DESIGN §7.3)已交付;M6-B=混合检索集成(kb search --hybrid 与 /api/v1/search?mode=hybrid,RRF(k=60)融合 BM25 与向量余弦、评测集钉死语义增益与词法无损,BM25 默认不动,DESIGN §7.3)已交付。
 
 ## M1 存储内核
 
@@ -245,4 +245,27 @@
 - `go test ./internal/store/ ./cmd/kb/ -run Vector -v`
 - `./scripts/verify.sh`
 
-**状态**:已交付(internal/object vector.go + EncodeVecBase64、internal/embed embed.go、internal/repo vecbuild.go/fsck/gc/childrenOf、cmd/kb index.go --embed、schema v6 两份 DDL;上述 Vector 测试全绿,verify 全绿)。M6-B(检索面:查询嵌入、Top-K、与 BM25 融合)未开工,届时单独评审。
+**状态**:已交付(internal/object vector.go + EncodeVecBase64、internal/embed embed.go、internal/repo vecbuild.go/fsck/gc/childrenOf、cmd/kb index.go --embed、schema v6 两份 DDL;上述 Vector 测试全绿,verify 全绿)。M6-B(检索面)见下节,已交付。
+
+## M6-B 混合检索集成(T55,已交付)
+
+**范围**(DESIGN §7.3;四条红线:不内嵌模型运行时 / 不引入向量数据库 / 向量按 model_id 版本化入内容 / **BM25 默认不动**——hybrid 是显式可选旗标,缺省调用零变化):`kb search --hybrid` 与 `GET /api/v1/search?mode=hybrid`(语义与 CLI 完全一致,TestServeCLIParityHybrid 钉死)——BM25 词法腿与向量余弦语义腿各取前 50 名做 **RRF 融合**(score = Σ 1/(60+rank),k=60 固定常数不设旋钮,rank 从 1 起两腿独立),输出融合分降序、平局路径升序;查询词经 Embedder 恰好 1 次嵌入(30s 上限);向量腿对快照 vec 分桶平扫(量级沿用 §7 定论:≤十万条精确遍历优于 ANN)。前置红线(一律响亮报错绝不静默降级):快照无 vec / 模型不一致(含维度不符)→ 指引 `kb index rebuild --embed`;KB_EMBED_MODEL 未设置 → 可行动配置报错(设置方法四步);嵌入失败原样上抛。`--json` 行内增可选字段 `mode:"hybrid"`(omitempty 仅 --hybrid 时存在,score 为融合分,与 --snippet 可叠加)。serve 进程同读 KB_EMBED_*(未配置不拦启动,mode=hybrid 按请求 409);hybrid 失败语义 409(未配置/无向量/模型不一致/嵌入失败)、mode 非法取值 400,均与 CLI 同文案。
+
+**验收标准**(与测试一一对应,名字含 Hybrid)
+
+- 前置与失败语义:无 vec / 模型不一致 / 嵌入失败三哨兵错误与可行动文案(rebuild --embed 指引、KB_EMBED_MODEL 设置方法)、nil Embedder、失败不降级——`internal/repo` TestHybridSearchNoVec / TestHybridSearchModelMismatch / TestHybridEmbedFailureNoDegrade / TestHybridNilEmbedder
+- 查询嵌入红线:恰好 1 次调用——`internal/repo` TestHybridEmbedOnce
+- RRF 算术与平局:两腿排名互换 → 融合分相等(1/61+1/62)→ 路径升序;零向量约定余弦 0——`internal/repo` TestHybridRRFTieBreak
+- 融合深度:两路各取前 50(120 条语料输出 ≤100)、分数降序——`internal/repo` TestHybridTopKDepth
+- 空库/--at 语义:空库无结果;历史快照无 vec 报错与词法 --at 同构——`internal/repo` TestHybridEmptyRepo / TestHybridAtHistoricalSnapshot
+- 评测集(证明有效不是感觉):tests/eval 固定语料 23 条中文条目(同义不同词/上下位/中英混写/纯代码 ID)+ 15 条查询(12 语义 + 3 词法),假 Embedder 主题轴固定表;语义查询 hybrid recall@5 逐条严格优于纯 BM25(12/12=1.0 vs ≤0.25)、代码/ID 查询两模式都命中、确定性逐字段——`internal/repo` TestHybridEval
+- CLI 端到端(本地 httptest 假 Ollama,零外网):报错路径(无 vec/未配置)、mode 字段与向后兼容、--snippet 叠加、确定性、BM25 不受影响——`cmd/kb` TestSearchHybridCLI
+- CLI/API parity:mode=hybrid 逐字段(含 mode 与融合 score)与顺序相等、缺省无 mode 字段——`cmd/kb` TestServeCLIParityHybrid
+- API 错误矩阵:成功路径(mode 字段/融合分区间/逐字节确定)、未配置 409、无向量 409、模型不一致 409、嵌入失败 409、非法 mode 400、缺省契约不变——`internal/server` TestServeSearchHybridModeOK / TestServeSearchHybridErrors / TestServeSearchHybridModelMismatch / TestServeSearchHybridEmbedFail
+
+**验收命令**
+
+- `go test ./internal/... ./cmd/kb/ -run Hybrid -v`
+- `./scripts/verify.sh`(e2e 含 hybrid 报错路径腿)
+
+**状态**:已交付(internal/repo hybrid.go(SearchHybrid/cosineRank/RRF 哨兵)、tests/eval corpus.go、cmd/kb search.go --hybrid、internal/server mode 参数与 409 映射、internal/view mode 字段;上述 Hybrid 测试全绿,verify 全绿)。演进项(融合权重/Top-K 旋钮/量级复核)未立项,触发条件沿用 §7.2「新 workload 证据」纪律。

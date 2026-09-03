@@ -43,10 +43,12 @@ func cmdServe(ctx context.Context, args []string) error {
 	token := f.get("--token", os.Getenv(serveTokenEnv))
 	dsn := effectiveDSN()
 	// 语义检索(M6-B):serve 进程同样读 KB_EMBED_*;未配置不拦启动(其余
-	// 端点零影响),mode=hybrid 请求届时返回 409 + 配置指引
-	emb, embErr := embed.FromEnv()
-	if embErr != nil {
-		emb = nil
+	// 端点零影响),mode=hybrid 请求届时返回 409 + 配置指引。
+	// 注意 emb 必须声明为接口类型:FromEnv 失败返回 nil *Ollama,直接装进
+	// embed.Embedder 会得到「非 nil 接口 + nil 具体值」(typed-nil 陷阱)。
+	var emb embed.Embedder
+	if e, err := embed.FromEnv(); err == nil {
+		emb = e
 	}
 	p, err := startServe(ctx, addr, server.Options{DSN: dsn, Project: projectName(), Branch: branchName(), Token: token, Embedder: emb})
 	if err != nil {
@@ -58,7 +60,7 @@ func cmdServe(ctx context.Context, args []string) error {
 	} else {
 		fmt.Printf("kb serve 写入型 HTTP API(已配置写入令牌,写端点需 Bearer 鉴权)\n")
 	}
-	if embErr != nil {
+	if emb == nil {
 		fmt.Printf("语义检索未启用(未配置 KB_EMBED_*;mode=hybrid 请求将返回 409 与配置指引)\n")
 	} else {
 		fmt.Printf("语义检索已启用(mode=hybrid;嵌入模型 %s)\n", emb.Model())

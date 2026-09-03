@@ -34,6 +34,7 @@
 - **M3.10 双后端**:默认 SQLite 文件库(零外部依赖);`KB_DSN=postgres://…` 切换 PostgreSQL;两后端同一套测试与 e2e 全绿,.ckb 备份可跨后端迁移
 - **M3.11 dir tree 全库视图**:不带 `-p` 时渲染全库树(项目为顶层节点,逐项目挂默认分支树)
 - **M4 CLI 检索**(schema v5):BM25 全文检索 `kb search`(字段加权 标题3/标签2/正文1,结果确定性可复现,`--at` 历史快照检索);`--snippet` 附命中片段(M4.2 展示层增量,命中词元以【】包裹,评分/排序零变化);倒排索引纳入快照(indexroot/indexshard,结构共享式增量);`kb index rebuild` 全量重建;`kb link resolve` 链接解析
+- **M6 混合检索**(M6-A 对象模型 + M6-B 检索面):`kb search --hybrid` 与 `/api/v1/search?mode=hybrid`——BM25 与向量余弦两路各取前 50 做 RRF 融合(k=60 固定常数),同义词/上下位/中英混写可召回;向量以内容寻址对象随快照冻结(vecshard/vecroot,schema v6),嵌入走外挂 Ollama 兼容服务(`KB_EMBED_MODEL` 必设 + `kb index rebuild --embed` 重建,换模型须重跑);**BM25 默认不动**(缺省调用零变化),评测集钉死语义增益的同时代码/ID 查询词法无损
 - **批量导入**:`kb bulk import <jsonl>` N 条笔记一次提交 + 一次索引增量(2000 条由逐条 103s/6.7GB 降至 350ms/11MB)
 - **Markdown 互操作**:`kb export md <目录>` 当前分支或 `--at` 历史快照导出为镜像 .md 文件树(front-matter + 正文原文字节,已存在整批拒绝、`--force` 覆盖);`kb import md <目录>` 递归导入(title 必填、tags 逗号分隔,问题文件整批响亮拒绝,一次提交一次索引增量);roundtrip 逐字节一致,写回零变更(地址不变)
 - **暂存工作流**:`note set/rm`、`dir rm --stage` 累积到暂存分支(单条成本恒定),`kb stage` 查看清单、`kb commit` 合入、`kb commit --abort` 丢弃
@@ -76,6 +77,17 @@
     ./kb search chan                     # BM25 全文检索,结果确定性可复现
     ./kb search chan --snippet           # 命中行下附缩进片段,命中词元以【】包裹
     ./kb search 通道 --json --snippet    # 机器可读;snippet 为可选字段,缺省不带
+
+混合检索(语义,可选;BM25 默认不动,--hybrid 显式开启):
+
+    # 前置两步:① 进程配置嵌入服务(KB_EMBED_MODEL 必设,KB_EMBED_URL 默认 http://127.0.0.1:11434)
+    #           ② 快照带向量索引:kb index rebuild --embed(先 ollama pull nomic-embed-text 之类拉模型)
+    export KB_EMBED_MODEL=nomic-embed-text
+    ./kb index rebuild --embed           # 逐条笔记嵌入,向量随快照冻结入库(显式操作,换模型须重跑)
+    ./kb search 部署上线 --hybrid        # BM25 与向量余弦两路 RRF 融合(k=60),score 为融合分
+    ./kb search 部署上线 --hybrid --json # 行内增可选字段 mode:"hybrid"(缺省不带,向后兼容)
+    # 同义词/上下位/中英混写也能召回(词法检索完全无命中时仍可命中);
+    # 快照无向量或未配 KB_EMBED_* 时响亮报错(含 rebuild --embed 与设置方法指引),绝不静默降级
 
 版本与变更:
 
@@ -132,6 +144,7 @@ HTTP API(AI/Agent 免 shell 消费与写入;DESIGN §8.5/§8.6):
     curl -s 'localhost:8787/api/v1/note?path=hello'      # 单条笔记(正文 + 派生摘要)
     curl -s 'localhost:8787/api/v1/search?q=chan&limit=5' # 检索,与 kb search --json 同构
     curl -s 'localhost:8787/api/v1/search?q=chan&snippet=1' # 附 snippet 片段字段(命中词元以【】包裹)
+    curl -s 'localhost:8787/api/v1/search?q=%E9%83%A8%E7%BD%B2&mode=hybrid' # 混合检索(RRF 融合;serve 进程读 KB_EMBED_*,行内附 mode 字段;失败 409 与 CLI 同文案)
 
 写入模式(默认只读;配置令牌后启用 POST/DELETE,DESIGN §8.6):
 

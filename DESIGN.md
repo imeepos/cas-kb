@@ -120,7 +120,7 @@ snapshot 的两个可选索引字段:`index`(M4,指向 indexroot)与 `vec`(M6-A,
 - **发现出口**:`kb project ls --json` / `kb branch ls --json` 输出含描述的机器可读清单,AI 一次调用完成选用。
 - **输出契约**:机器消费一律走 `--json`(字段名与结构即契约,调整须在本文档与 ROADMAP 显式记录);文本输出面向人,列格式可能随版本调整——v3 起 `project ls` 文本为「名称/分支数/描述」三列,空描述显示「(未设置)」占位。惯例依据:clig.dev(人类输出为人调优、机器输出走稳定 stdout 通道)与 arduino-cli 向后兼容政策(输出格式变更视为破坏性变更,须显式声明)。v4 起契约变化:`note ls --json` 每行新增 `path` 字段(`slug` 保留为路径叶段);`note get` 文本首列由 `slug:` 改为 `path:`;`diff` 文本与结构化输出的条目键由 slug 改为全路径;新增 `dir ls --json`(每项 name/type/title)。
 - **全库树视图(M3.11 增量)**:`kb dir tree` 未显式指定项目(`-p`/`KB_PROJECT` 均未设置)且未给路径参数时,渲染全库文本视图:`(root)/` 下项目为顶层节点,逐项目挂其默认分支(`KB_BRANCH`)的树,无分支的空项目显示 (空);显式指定项目后保持单项目树不变。文本视图面向人;机器消费仍走 `kb project ls --json` 与 `kb note ls --json`。
-- **检索与链接(M4 契约)**:`search --json` 每项为 `{path, slug, addr, title, tags, summary, score}`(score 为 BM25 浮点分);`link resolve --json` 为 `{path, slug, addr, title}`;文本输出 search 为「分数 路径 标题」、link resolve 为 path/addr/title 三行。新增命令:`kb search`、`kb link resolve`、`kb index rebuild`(全部支持 `-p` 项目作用域)。
+- **检索与链接(M4 契约)**:`search --json` 每项为 `{path, slug, addr, title, tags, summary, score}`(score 为 BM25 浮点分;可选字段 `snippet`(M4.2)与 `mode:"hybrid"`(M6-B,此时 score 为 RRF 融合分)均 `omitempty`,缺省不带);`link resolve --json` 为 `{path, slug, addr, title}`;文本输出 search 为「分数 路径 标题」、link resolve 为 path/addr/title 三行。新增命令:`kb search`、`kb link resolve`、`kb index rebuild`(全部支持 `-p` 项目作用域)。
 
 ### 4.7 目录层级(schema v4)
 
@@ -343,15 +343,15 @@ cas-kb/
 
 **声明**:上文「三难权衡定论」维持原文——**无新 workload 证据不重启三难讨论**;本清单的价值恰是「到了触发线时有据可查」,而非提前立项。
 
-### 7.3 语义检索(规划中,M6-B 实现检索面)
+### 7.3 语义检索(M6-A 对象模型 + M6-B 检索面,已交付)
 
-**现状**:M6-A(T54)已交付**向量对象模型与嵌入重建**——向量以 CAS 对象入库、随快照冻结;**检索面(查询嵌入、余弦相似、与 BM25 的融合/切换)属 M6-B,本批未做**;默认检索仍是 BM25,`kb search` 行为零变化。
+**现状**:M6-A(T54)交付向量对象模型与嵌入重建——向量以 CAS 对象入库、随快照冻结;M6-B(T55)交付**检索面**:`kb search --hybrid` 与 `GET /api/v1/search?mode=hybrid`(BM25 + 向量余弦 RRF 融合),语义与两条出口逐字段同构(cmd/kb TestServeCLIParityHybrid 钉死)。缺省检索仍是 BM25,`kb search` 行为零变化(评测同时断言语义增益与词法无损)。
 
 **四条红线(负责人裁决,不可越)**:
 1. **不内嵌模型运行时**:嵌入一律走外挂 HTTP 服务(internal/embed,Ollama 兼容 `/api/embed`);CLI 进程不加载任何模型权重
 2. **不引入向量数据库**:向量就是内容寻址对象(vecshard/vecroot),存储/GC/备份/同步全部继承现有 CAS 机制,不新增外部依赖
 3. **向量按 model_id 版本化入内容**:`model`/`dim` 写进 vecshard/vecroot 内容,跨模型必不同址;混版由 fsck 检出
-4. **本批次不做检索集成**:M6-A 只落对象与重建;检索 API/排序/融合留待 M6-B 单独评审
+4. **BM25 默认不动**:词法检索是默认且不可降级的路径——hybrid 是显式可选旗标(`--hybrid` / `mode=hybrid`),缺省调用的输出与分数逐字节不变;评测集钉死语义增益的同时代码/ID 查询两模式都命中(无词法精度伤害)
 
 **对象模型(两类新 kind,库 schema v6,见 §4.9)**:
 - `vecshard`(分片):规范 JSON `{kind, model, dim, items: [{path: 全路径, vec: base64}]}`;字段定序、items 按路径排序;`vec` 为全部 float32 分量按 **little-endian** 拼接后 base64(StdEncoding)的单个字符串——二进制承载规避 JSON 浮点文本的精度/格式歧义,保证跨平台逐字节确定
@@ -359,13 +359,22 @@ cas-kb/
 - `vecroot`(根):`{kind, model, dim, shards[64]}`(桶号下标,空桶空串,照 indexroot 范本);root 的 model/dim 是 fsck 一致性基准
 - `snapshot.vec`(可选,`omitempty`)指向 vecroot;无向量快照编码逐字节不变
 
-**Embedder 契约(internal/embed)**:`Model()/Dim()/Embed(ctx, texts) ([]vector, error)`;Ollama 适配器 POST `{KB_EMBED_URL|http://127.0.0.1:11434}/api/embed`,请求 `{"model": KB_EMBED_MODEL, "input": [texts]}`,读 `embeddings` 数组(批量语义:每输入串一维、顺序一致——字段名与批量语义经官方文档 docs/api.md 核实并注释于代码);HTTP 超时 30s;**KB_EMBED_MODEL 未设置 = 向量功能整体关闭,入口给可行动报错,绝不静默跳过**。
+**Embedder 契约(internal/embed)**:`Model()/Dim()/Embed(ctx, texts) ([]vector, error)`;Ollama 适配器 POST `{KB_EMBED_URL|http://127.0.0.1:11434}/api/embed`,请求 `{"model": KB_EMBED_MODEL, "input": [texts]}`,读 `embeddings` 数组(批量语义:每输入串一维、顺序一致——字段名与批量语义经官方文档 docs/api.md 核实并注释于代码);HTTP 超时 30s;**KB_EMBED_MODEL 未设置 = 向量功能整体关闭,入口给可行动报错,绝不静默跳过**(报错文案按场景给下一步指引:`FromEnvWithNext`/`NotConfiguredError`,检索面共用 `embed.NextHybridSearch`)。
 
 **重建路径**:`kb index rebuild --embed`——逐条笔记(标题+空行+正文)嵌入、按桶聚合写分片与根、快照带 vec 落库(tree 未变故结构共享,BM25 索引地址沿用);嵌入失败响亮中止、分支指针不动(对象幂等可重试)。普通内容提交不带 vec(向量仅描述重建时刻的库),重跑 rebuild --embed 恢复;普通 `kb index rebuild` 反向沿用头快照 vec。**向量重建是显式操作**,不进写热路径。
 
 **运维配套**:fsck 校验分片 model/dim 与根一致、items 路径存在于对应快照(缺失=fail;无 vec 快照跳过不报);GC 对 vecroot/vecshard 与 indexshard 同规则可达回收(`gc.keep_last` 水位同精简);vecshard/vecroot 走 store 透明 gzip 压缩(仅 SQLite)。
 
-**M6-B 待决(届时评审,不在本批)**:查询端点形态(独立 `kb vsearch` vs 融合进 `kb search`)、Top-K 与阈值、与 BM25 的融合策略、暴力扫描的量级上限判断——量级与三难关系沿用 §7 定论(≤十万条量级精确遍历优于 ANN,勿提前优化)。
+**混合检索(M6-B 交付,repo.SearchHybrid 一份实现两条出口)**:
+- **RRF 融合**:BM25 词法腿与向量余弦语义腿**各取前 50 名**参与融合;融合分 `score = Σᵢ 1/(k + rankᵢ)`,k=**60**(社区通行常数,**固定不设旋钮**),rank 从 1 起两腿独立计数;输出按融合分降序,平局路径升序(与 BM25 排序规则同构;融合键是路径,天然唯一)。两条都未命中的条目不出现;仅单腿命中的条目拿单份贡献
+- **查询嵌入**:查询词经 Embedder 恰好 **1 次调用**(30s 上限,HTTP 与 ctx 双重超时);向量腿对快照 vec **分桶平扫**(桶号升序、分片内按路径升序,累加顺序固定)——量级判断沿用 §7 定论(≤十万条精确遍历优于 ANN,勿提前优化);零向量约定余弦为 0(排名退化为路径序,仍确定)
+- **失败语义(一律响亮报错,绝不静默降级)**:快照无 vec → 「该快照无向量索引,先 kb index rebuild --embed,或去掉 --hybrid 用词法检索」;快照 vecroot 的 model 与当前 Embedder.Model() 不一致(含查询向量维度不符)→ 指引重跑 `kb index rebuild --embed`(模型换了要重建);KB_EMBED_MODEL 未设置 → 可行动配置报错(设置方法四步);嵌入调用失败 → 原样上抛不降级。哨兵错误 `repo.ErrHybridNoVec/ErrHybridModelMismatch/ErrHybridEmbedFailed` 供 serve 映射 409
+- **确定性边界**:融合是纯函数——**同快照 + 同 model_id(同向量数据)→ 结果与顺序逐字段完全一致**;向量随模型版本变化,故可复现性边界 = 同快照 + 同 model_id(换模型重建后是新基准)。由假 Embedder(固定向量表)的单测与评测逐字节钉死
+- **契约增量(全部可选,向后兼容)**:CLI `kb search --hybrid`(文本输出同款,score 列为融合分);`--json` 行内增可选字段 `"mode":"hybrid"`(`omitempty`,仅 --hybrid 时存在,与 `--snippet` 可叠加);HTTP `GET /api/v1/search` 增可选参数 `mode=hybrid`(缺省=纯词法,契约不变;非法取值 400)。**hybrid 失败语义(serve)**:未配置 KB_EMBED_*/快照无向量/模型不一致/嵌入失败一律 **409** + 与 CLI 相同语义的错误 JSON(mode 参数非法为 400;口径见 §8.5 端点表)
+- **serve 进程**:同样读 KB_EMBED_*;未配置不拦启动(其余端点零影响,启动横幅注明),mode=hybrid 请求届时按请求返回 409 + 配置指引
+- **评测集(tests/eval + internal/repo TestHybridEval)**:固定语料 23 条中文知识条目(同义不同词/上下位/中英混写/纯代码 ID 类)+ 15 条查询(12 语义 + 3 词法);假 Embedder 按「主题词→轴」手工固定表构造向量(语义近旁=共享主题轴)。断言:语义类查询 hybrid recall@5 逐条严格优于纯 BM25;代码/ID 类查询两模式都命中(词法无损)
+
+**演进项(未立项)**:融合权重/更多腿、Top-K 与阈值旋钮、暴力扫描的量级上限复核——触发条件沿用 §7/§7.2 的「新 workload 证据」纪律。
 
 ## 8. 部署与配置
 
@@ -387,8 +396,8 @@ cas-kb/
 | KB_PROJECT | `default` | 项目作用域:note/log/diff/gc/fsck 等命令只作用于该项目;亦可用 -p 按命令覆盖 |
 | KB_UPDATE_REPO | `imeepos/cas-kb` | `kb update` 检查的 GitHub 仓库(owner/name),也可 --repo 按次覆盖 |
 | GITHUB_TOKEN | (无) | 可选;GitHub API 令牌,缓解匿名限流(仅 update 使用,只作请求头) |
-| KB_EMBED_MODEL | (无) | 语义向量嵌入模型名(M6-A,如 nomic-embed-text);**未设置 = 向量功能整体关闭**(`kb index rebuild --embed` 给可行动报错) |
-| KB_EMBED_URL | `http://127.0.0.1:11434` | 嵌入服务地址(Ollama 兼容 /api/embed);向量按 model 版本化入内容,换模型须重跑 rebuild --embed |
+| KB_EMBED_MODEL | (无) | 语义向量嵌入模型名(M6-A,如 nomic-embed-text);**未设置 = 向量功能整体关闭**(`kb index rebuild --embed` 与 `kb search --hybrid` 给可行动报错) |
+| KB_EMBED_URL | `http://127.0.0.1:11434` | 嵌入服务地址(Ollama 兼容 /api/embed);向量按 model 版本化入内容,换模型须重跑 rebuild --embed(`--hybrid`/`mode=hybrid` 同口径校验模型一致) |
 
 指向 102 的示例(PG 后端):`postgres://caskb_app:<密码>@192.168.x.102:5432/caskb?sslmode=disable`。
 安全要求:专用账号 `caskb_app`(只授 caskb 库权限)、密码走 scram-sha-256、内网传输是否启用 TLS 按内网策略定;**凭据一律走环境变量,不入库不入仓**。
@@ -424,7 +433,7 @@ cas-kb/
 | `/api/v1/projects` | — | 项目清单,`project ls --json` 同构 | 500 |
 | `/api/v1/tree` | `at`(短标识/分支名,省略=分支头) | 当前项目层级树(嵌套:dir 带 children,note 带 addr/title) | at 不存在 404;歧义 400 |
 | `/api/v1/note` | `path` 必填,`at` | 单条笔记(正文原文 + 派生摘要,tags 归一 `[]`) | 缺/坏 path 400;类型冲突 400;不存在 404 |
-| `/api/v1/search` | `q` 必填,`at`、`limit`(正整数) | BM25 检索,`search --json` 同构;limit 只截断不重排 | 缺 q / limit 非法 400;at 不存在 404 |
+| `/api/v1/search` | `q` 必填,`at`、`limit`(正整数)、`snippet=1`、`mode`(可选 `hybrid`,缺省=纯词法) | BM25 检索,`search --json` 同构;limit 只截断不重排;`snippet=1` 附片段字段;`mode=hybrid` 与 `--hybrid` 同语义(RRF 融合,score 为融合分,行内附 `mode` 字段) | 缺 q / limit 非法 / mode 非法取值 400;at 不存在 404;hybrid 前置/执行失败(未配置 KB_EMBED_*、快照无向量、模型不一致、嵌入失败)409 |
 | `/api/v1/log` | `limit`(正整数) | 快照链(最新在前):id/time/message/parents,短标识与 CLI 同长 | limit 非法 400 |
 | `/api/v1/diff` | `from`、`to` 必填 | A/D/M 按全路径,`diff --json` 同构 | 缺参 400;引用不存在 404;歧义 400 |
 | `/api/v1/merge-state` | `project`、`branch`(省略=serve 作用域与默认分支) | 合并中间态查询(T48),`kb stage --json` 同构:`state ∈ idle\|merging` + 派生布尔 `can_continue`/`can_abort` + 事实字段 `base`/`theirs`/`ours`/`conflicts[]`/`conflict_count`/`merged_branch`;idle=200 轮询稳态(事实字段 null、conflicts 空数组、两布尔 false),合并态事实取中间态 meta 键,conflicts 与 CLI 冲突清单同契约 | 项目/分支不存在 404;参数空白 400 |
