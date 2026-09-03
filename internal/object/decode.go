@@ -21,6 +21,10 @@ func Decode(k Kind, data []byte) (any, error) {
 		return DecodeIndexRoot(data)
 	case KindIndexShard:
 		return DecodeIndexShard(data)
+	case KindVecRoot:
+		return DecodeVecRoot(data)
+	case KindVecShard:
+		return DecodeVecShard(data)
 	default:
 		return nil, fmt.Errorf("object: 未知 kind %q", k)
 	}
@@ -102,4 +106,29 @@ func ensureSchema(v int) error {
 		return fmt.Errorf("object: 不支持的 schema_version %d(期望 %d),字段格式已变更", v, SchemaVersion)
 	}
 	return nil
+}
+
+// DecodeVecShard 解析语义向量分片对象;载荷 kind 标签必须精确匹配
+// (v6 门禁:拒绝一切不认识/不匹配的编码,同 M4 先例)。
+func DecodeVecShard(data []byte) (*VecShard, error) {
+	var s VecShard
+	if err := json.Unmarshal(data, &s); err != nil {
+		return nil, fmt.Errorf("object: vecshard 解码失败: %w", err)
+	}
+	if s.Kind != KindVecShard {
+		return nil, fmt.Errorf("object: vecshard 载荷 kind 为 %q,期望 %q", s.Kind, KindVecShard)
+	}
+	return &s, nil
+}
+
+// DecodeVecRoot 解析语义向量索引根对象;载荷 kind 标签必须精确匹配。
+func DecodeVecRoot(data []byte) (*VecRoot, error) {
+	var vr VecRoot
+	if err := json.Unmarshal(data, &vr); err != nil {
+		return nil, fmt.Errorf("object: vecroot 解码失败: %w", err)
+	}
+	if vr.Kind != KindVecRoot {
+		return nil, fmt.Errorf("object: vecroot 载荷 kind 为 %q,期望 %q", vr.Kind, KindVecRoot)
+	}
+	return &vr, nil
 }
