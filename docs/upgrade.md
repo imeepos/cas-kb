@@ -1,6 +1,6 @@
 # 升级指南
 
-## 升级到 Unreleased(schema v6:M6-A 向量对象模型)
+## 升级到 v0.8.0(schema v6:向量对象模型)
 
 本次**有数据模型变更**(库 schema v5 → v6):仅放宽 `objects.kind` 约束(新增 `vecroot`/`vecshard` 两类向量对象)并把 meta 播种值升至 6,表结构与 v5 一致;但按本库纪律**不做存量库自动迁移**——新版对 v5 库会响亮拒绝打开并指引重建:
 

@@ -3,7 +3,7 @@
 本文件记录面向用户的显著变更;格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 升级操作指引见 [docs/upgrade.md](docs/upgrade.md)。
 
-## Unreleased
+## v0.8.0 - 2026-09-03
 
 ### Added
 - 混合检索(M6-B/T55,DESIGN §7.3):`kb search --hybrid` 与 `GET /api/v1/search?mode=hybrid`(两条出口逐字段同构)——BM25 词法腿与向量余弦语义腿**各取前 50 名做 RRF 融合**(score = Σ 1/(60+rank),k=60 固定常数不设旋钮),输出融合分降序、平局路径升序;查询词经嵌入服务恰好 1 次调用(30s 上限);同义词/上下位/中英混写可召回(词法零命中仍可命中)。`--json` 行内增可选字段 `mode:"hybrid"`(`omitempty` 仅 --hybrid 时存在,score 为融合分,与 `--snippet` 可叠加);**BM25 默认不动**——缺省调用输出与分数逐字节不变。前置失败一律响亮报错绝不静默降级:快照无向量或模型不一致 → 指引 `kb index rebuild --embed`;`KB_EMBED_MODEL` 未设置 → 含设置方法的可行动报错;嵌入失败原样上抛。可复现性边界 = 同快照 + 同 model_id(同向量数据 → 结果与顺序逐字段确定)。API 失败语义:hybrid 前置/执行失败 409(与 CLI 同文案),`mode` 非法取值 400;serve 进程同读 `KB_EMBED_*`(未配置不拦启动,启动横幅注明)
