@@ -7,7 +7,7 @@
 
 ## 0. TL;DR
 
-1. **融合公式(问 1):RRF,k=60 硬编码,零旋钮。**出处 = Cormack/Clarke/Büttcher(SIGIR 2009)原文:「k=60 was fixed during a pilot investigation and not altered during subsequent validation」——k=60 是试点期定死、验证期未动的常数,这正是它「无 tunable」的原因:以无参数换跨域稳健(BEIR 摘要同时提醒「BM25 是稳健基线」,倒逼融合必须显式而非默认)。Elastic 的 rank_constant 默认 60、Qdrant 默认 k=2(公式映射为论文的 61)——引擎各玩各的,论文 60 是唯一公共锚点。cas-kb v1 只做 RRF(60);加权分数融合(CC/DBSF/relativeScoreFusion)需要归一化与标注调参(Bruck TOIS 2023:RRF 对参数敏感、CC 更优但需样本),列为演进项。
+1. **融合公式(问 1):RRF,k=60 硬编码,零旋钮。**出处 = Cormack/Clarke/Büttcher(SIGIR 2009)原文:「k=60 was fixed during a pilot investigation and not altered during subsequent validation」——k=60 是试点期定死、验证期未动的常数,这正是它「无 tunable」的原因:以无参数换跨域稳健(BEIR 摘要同时提醒「BM25 是稳健基线」,倒逼融合必须显式而非默认)。Elastic 的 rank_constant 默认 60、Qdrant 默认 k=2(公式映射为论文的 61)——引擎各玩各的,论文 60 是唯一公共锚点。cas-kb v1 只做 RRF(60);加权分数融合(CC/DBSF/relativeScoreFusion)需要归一化与标注调参(Bruch TOIS 2023:RRF 对参数敏感、CC 更优但需样本),列为演进项。
 2. **嵌入服务契约(问 2):只用 Ollama `/api/embed`(batch 原生),不碰 legacy `/api/embeddings`。**官方 api.md 实抓:`input` 接受字符串或数组(batch)、`truncate` 默认 true(设 false 超上下文即报错)、`keep_alive` 默认 5m、响应 `embeddings[][]`。模型钉住策略:model_id 配置化 + 首推自检维度 + 模型名进 vecroot;模型卡维度(本机 registry 与 HF config 实测):nomic-embed-text 768 维/8192 ctx(v1.5)、bge-m3 1024 维/8192 ctx(多语言,中文首选)、mxbai-embed-large 1024 维/512 ctx、all-minilm 384 维。本机未运行 Ollama(探测空),契约以官方文档为准——诚实见 §7。
 3. **向量入 CAS(问 3):vecshard = JSON 定序头 + float32 小端二进制体,不用纯 JSON 存数值。**一手实验:同一 float32 的 LE 字节与 JSON 文本是两条确定性通路,但 JSON 形态依赖 Go stdlib 浮点格式化算法(官方先例:Go 1.8 明文声明 compress/flate 编码输出跨版本可变)且体积 2~3 倍;二进制定长 LE 只有一个自由度(端序),约定即永续。gzip 先例(indexshard −60%)**不可平移**:高熵向量本机实测 gzip 后仅剩 92%(省 8%),对照全零数据压 1000 倍——压缩对向量趋零,机制保留(0x01 前缀透明容器)、收益不指望。
 4. **平扫边界(问 4):本机纯 Go 实测,10k×768 单查询 1.8ms、100k×1024 24ms——CPU 永远不是瓶颈,装载才是。**50ms 预算内纯计算可容 ~25 万×768;计入 CAS 读出+解码后安全线 = 数万条,十万条进入 50~100ms 区间,恰与 DESIGN §7「目标 ≤ 十万条」量级判断咬合。HNSW 不适合 CAS 冻结分片(hnswlib API 实证:add_items 增量改图/mark_deleted 墓碑/resize——图结构无「未动子结构地址不变」可言,结构共享归零);观测挂钩 = §7.2 指标 6,增行「混合检索延迟 P95(平扫段/嵌入段分开计)」,触发线:平扫段 P95 > 50ms 且条目数趋势增长。
@@ -40,7 +40,7 @@
 
 ### 1.3 对 cas-kb 的裁剪建议
 
-1. **v1 融合公式 = RRF,k 硬编码 60,不暴露配置**。理由:(a) 论文原文自证 k=60 是「不调的常数」,暴露成配置只会诱导无标注调参(Qdrant 文章的调参前提是「自有标注集」,cas-kb 没有);(b) 无参数 ⇒ 融合行为跨版本恒定,服务「同快照+同模型可复现」;(c) Bruck 的反证(RRF 参数敏感、CC 更优)恰恰说明可调融合是另一个工程(需要评测集与标注),v1 不做,列演进项。
+1. **v1 融合公式 = RRF,k 硬编码 60,不暴露配置**。理由:(a) 论文原文自证 k=60 是「不调的常数」,暴露成配置只会诱导无标注调参(Qdrant 文章的调参前提是「自有标注集」,cas-kb 没有);(b) 无参数 ⇒ 融合行为跨版本恒定,服务「同快照+同模型可复现」;(c) Bruch 的反证(RRF 参数敏感、CC 更优)恰恰说明可调融合是另一个工程(需要评测集与标注),v1 不做,列演进项。
 2. **每路取 top-W 再融合**:BM25 路与向量路各取 top-W(W = max(50, 5×n),n 为用户 `-n`;Elastic 默认 10 偏小,其文档自述「higher value will improve result relevance at the cost of performance」,cas-kb 平扫+BM25 双路的边际成本可忽略,取大窗口换召回)。
 3. **混合排序确定性沿用 M4 纪律**:RRF 分数降序 → 路径升序 → 地址;向量路浮点求和按固定遍历序(条目地址升序)保证同快照+同模型逐位一致。
 4. **默认与旗标(红线 d 落地形态)**:`kb search --hybrid` 显式开启;无旗标 = 纯 BM25,与 v0.7.0 逐字节一致。HTTP 侧 `GET /api/v1/search?hybrid=1`(仅字面 1 生效,沿 `snippet=1` 先例)。**不采纳** Weaviate 式 alpha 权重(依赖 relativeScoreFusion 语义,属加权融合族,v1 不做)。
@@ -131,7 +131,7 @@
 - **sqlite-vec**(Alex Garcia,Mozilla Builders 项目,README 实抓):「Store and query **float, int8, and binary vectors** in `vec0` virtual tables」「An extremely small, **"fast enough"** vector search SQLite extension」;KNN 即 `WHERE embedding MATCH ? ORDER BY distance LIMIT k`。**它证明的是:SQLite 生态内、不引入外部向量服务,平扫向量检索是成立且被广泛使用的形态**——与红线 b 同构(我们连扩展都不引,纯 Go 平扫,理由见 §4)。
 - **浮点编码的一手实验**(本机 go1.26.2,脚本与输出留存于检索过程):值 -0.010071029 → float32 位型 0xbc2500f5 → LE 字节 `f5 00 25 bc`;同一 4 字节按 BE 读回 = -1.62e+32(位型 0xf50025bc)——**端序是二进制编码唯一需要约定的自由度,约定即逐字节永续**;encoding/json 输出 `[-0.010071029]`——文本形态是另一条确定性通路,但位数由「最短唯一表示」算法决定(strconv 文档实抓:precision -1 uses **「the smallest number of digits necessary such that ParseFloat will return f exactly」**),该算法是 stdlib 实现细节。**stdlib 编码输出跨版本可变有官方先例**:Go 1.8 发行注记(compress/flate 段,go.dev 实抓):「**the exact encoded output of DEFLATE may be different from Go 1.7**. Since DEFLATE is the underlying compression of gzip…those formats may have changed outputs」。
 - **压缩收益的一手实验**(本机 python gzip,种子固定):模拟嵌入分布 float32 数组(高斯与单位化两种):**gzip 后均 ≈ 92%(只省 8%),与维度无关**;对照全零 3MB → 3KB(压 1000 倍)。结论:indexshard 的 −60% 先例来自文本词表高冗余,**对高熵向量不可平移**;sqlite-vec 的 binary quantization 指南(实抓)是社区对「向量压缩」的另路(1 bit/维,32× 缩减,「bound to lose a lot quality…Oversampling and re-scoring will help」)——属质量换空间的演进项,与「透明压缩」是两回事。
-- **对象编码先例归纳**:sqlite-vec 内部以定长二进制存向量;Ollama 响应用 JSON 文本(传输态)。**传输态用 JSON、存储态用定长二进制**是社区共同选择——cas-kb 的 CAS 对象恰是存储态。
+- **对象编码先例归纳**(只按已实抓证据立论):sqlite-vec 的 vec0 表声明支持 float/int8/binary 三种向量存储、输入示例用 JSON 文本(README 实抓;其内部存储字节形态未在本次抓取范围,不做断言);Ollama 响应用 JSON 文本(传输态)。cas-kb 选择存储态用定长二进制的依据是 §3.2 的两条一手实验(端序约定唯一自由度 + JSON 文本体积 2~3 倍与格式化算法依赖),不依赖对 sqlite-vec 内部实现的推断。
 
 ### 3.3 对 cas-kb 的裁剪建议
 
