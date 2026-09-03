@@ -3,6 +3,16 @@
 本文件记录面向用户的显著变更;格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 升级操作指引见 [docs/upgrade.md](docs/upgrade.md)。
 
+## Unreleased
+
+### Added
+- 向量对象模型与嵌入重建(M6-A/T54,DESIGN §7.3,**schema v6**):新增 `vecshard`/`vecroot` 两类内容寻址对象与快照可选 `vec` 字段——语义向量随快照冻结入库,float32 按 little-endian 拼接后 base64 保证跨平台逐字节确定,`model`/`dim` 写进内容故**跨模型必不同址**;嵌入走外挂服务(不内嵌运行时、不引入向量数据库),`kb index rebuild --embed` 全量重建(逐条笔记标题+正文嵌入、FNV-1a(路径) 64 桶分片、快照带 vec 落库、BM25 索引地址沿用;嵌入失败响亮中止可重试);fsck 增向量一致性校验(分片 model/dim 与根一致、items 路径存在于对应快照,无 vec 快照跳过);GC 与 `gc.keep_last` 对向量对象与倒排索引同规则;vecshard/vecroot 走透明 gzip 压缩(SQLite 后端)
+- Embedder 适配器(internal/embed):`KB_EMBED_MODEL`(嵌入模型名,未设置=向量功能整体关闭并给可行动报错,不静默跳过)与 `KB_EMBED_URL`(Ollama 兼容 `/api/embed`,默认 `http://127.0.0.1:11434`)两个新配置项;HTTP 超时 30s,错误文案含服务地址/模型与下一步动作;Ollama 字段名与批量顺序语义经官方文档核实并注释于代码
+
+### Changed
+- **库 schema 版本升至 6**(仅放宽 `objects.kind` 约束 + meta 播种值;表结构与 v5 一致):v5 存量库在新版本下**拒绝打开**并指引清库重建(不做自动迁移);老数据可弃则清库重建后 `kb init`,或留在旧版本二进制上继续使用
+- 本批不含语义检索面(查询嵌入/Top-K/与 BM25 融合属 M6-B):默认检索仍是 BM25,`kb search` 行为零变化
+
 ## v0.7.0 - 2026-09-03
 
 ### Added

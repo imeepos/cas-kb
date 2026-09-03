@@ -32,14 +32,18 @@
 
 ## 3. 对象模型
 
-四类对象,地址都是内容哈希:
+八类对象(四类基础 + M4 两类检索索引 + M6-A 两类语义向量),地址都是内容哈希:
 
 | 对象 | 载荷 | 地址含义 |
 |---|---|---|
 | `blob` | 正文原始字节(无信封) | 内容指纹 |
 | `note` | meta + body(blob 地址)+ links | 一条知识条目 |
 | `tree` | entries: slug + type(note\|dir)→ 目标地址 | 目录/解析表;type=dir 指向子 tree,目录可嵌套(M3.8) |
-| `snapshot` | root(tree 地址)+ parents + time + message | 全库一个版本 |
+| `snapshot` | root(tree 地址)+ parents + time + message (+ index/vec) | 全库一个版本 |
+| `indexroot` / `indexshard` | M4 倒排检索索引(根/分片,载荷规格见 §7) | 检索索引随快照冻结、逐快照可复现 |
+| `vecroot` / `vecshard` | M6-A 语义向量索引(根/分片,载荷规格见 §7.3) | 向量随快照冻结、按模型版本化 |
+
+snapshot 的两个可选索引字段:`index`(M4,指向 indexroot)与 `vec`(M6-A,指向 vecroot),均为 `omitempty`——未携带时编码与历史逐字节一致,对象地址不变。
 
 ### 3.1 note 字段规格
 
@@ -79,7 +83,7 @@
 - **meta** — `schema_version` 等键值;加载时版本不符直接拒绝(误配置报错要响)
 - 辅助索引:`objects(kind)`、`branches(project)`(schema.sql 尾部;规模小可不建)
 
-> 版本约定:库 schema 版本(meta.schema_version,当前 4)与对象编码版本(object.SchemaVersion,note 内嵌,当前 1)相互独立;v2 仅动表结构,v3 仅加描述列,v4 仅演进 tree 对象编码(带类型条目,表结构不变)——note/snapshot 编码与地址规则始终不变。
+> 版本约定:库 schema 版本(meta.schema_version,当前 6)与对象编码版本(object.SchemaVersion,note 内嵌,当前 1)相互独立;v2 仅动表结构,v3 仅加描述列,v4 仅演进 tree 对象编码(带类型条目,表结构不变),v5 放宽 kind 纳入 indexroot/indexshard(M4),v6 再放宽纳入 vecroot/vecshard(M6-A,§4.9)——note/snapshot 编码与地址规则始终不变。
 
 ### 4.2 为什么 Postgres 合适
 
@@ -133,7 +137,13 @@
 - **分派口径**:store.Open 按前缀分派——`postgres://`/`postgresql://` → PG,其余一律视为 SQLite 路径;CLI 全部面向 store.Store 接口,repo 层对后端零感知;`kb init` 显示实际后端与目标(展示不含凭据)
 - **并发形态**:WAL + busy_timeout(10s)+ foreign_keys ON,经 DSN pragma 逐连接生效;GC/FSCK 的「List 游标遍历中嵌套 Get/Delete」依赖读写并发,WAL 下成立(实测探针选定 pragma 编码形态:参数名字面、值中 `=` 编码为 `%3d`)
 - **方言差异**:bytea→BLOB、timestamptz→TEXT(strftime UTC)、addr 正则 CHECK→等价 GLOB+长度 CHECK;SQLite 读回空 blob 可能呈现 nil,Put 侧归一为空 blob(满足 NOT NULL,与 PG 字节语义一致)
-- **同一版本门禁**:meta.schema_version 与 PG 共用 4;旧库拒绝打开、`meta` 表在但无版本行等价全新库的口径一致
+- **同一版本门禁**:meta.schema_version 与 PG 共用 6;旧库拒绝打开、`meta` 表在但无版本行等价全新库的口径一致
+
+### 4.9 向量对象与 schema v6 门禁(M6-A)
+
+- **门禁升级**:v6 仅放宽 `objects.kind` 约束(新增 `vecroot`/`vecshard`)并把 meta 播种值升至 6;表结构与 v5 逐字节一致。存量 v5 库照例**拒绝打开**并指引重建(老数据可弃则清库重建,不做自动迁移);v6 实现对不认识的向量编码(载荷 kind 标签不匹配)响亮拒绝,同 M4 先例
+- **地址规则**:向量对象地址 = sha256(规范字节);`model` 与 `dim` 写进对象内容,故**跨模型必不同址**——同一批笔记换嵌入模型重建,产出全新地址族,新旧向量族可并存(各自随所属快照可达),不会误混
+- **配套继承**:childrenOf 纳入向量对象 → GC/pull/transfer/fsck 零改动继承可达语义;vecshard/vecroot 与 indexshard 同规则受 `gc.keep_last` 水位精简;store 透明 gzip 压缩同待遇(仅 SQLite 后端)
 
 ## 5. Go 工程结构(M1–M3.10 按此结构实现)
 
@@ -333,6 +343,30 @@ cas-kb/
 
 **声明**:上文「三难权衡定论」维持原文——**无新 workload 证据不重启三难讨论**;本清单的价值恰是「到了触发线时有据可查」,而非提前立项。
 
+### 7.3 语义检索(规划中,M6-B 实现检索面)
+
+**现状**:M6-A(T54)已交付**向量对象模型与嵌入重建**——向量以 CAS 对象入库、随快照冻结;**检索面(查询嵌入、余弦相似、与 BM25 的融合/切换)属 M6-B,本批未做**;默认检索仍是 BM25,`kb search` 行为零变化。
+
+**四条红线(负责人裁决,不可越)**:
+1. **不内嵌模型运行时**:嵌入一律走外挂 HTTP 服务(internal/embed,Ollama 兼容 `/api/embed`);CLI 进程不加载任何模型权重
+2. **不引入向量数据库**:向量就是内容寻址对象(vecshard/vecroot),存储/GC/备份/同步全部继承现有 CAS 机制,不新增外部依赖
+3. **向量按 model_id 版本化入内容**:`model`/`dim` 写进 vecshard/vecroot 内容,跨模型必不同址;混版由 fsck 检出
+4. **本批次不做检索集成**:M6-A 只落对象与重建;检索 API/排序/融合留待 M6-B 单独评审
+
+**对象模型(两类新 kind,库 schema v6,见 §4.9)**:
+- `vecshard`(分片):规范 JSON `{kind, model, dim, items: [{path: 全路径, vec: base64}]}`;字段定序、items 按路径排序;`vec` 为全部 float32 分量按 **little-endian** 拼接后 base64(StdEncoding)的单个字符串——二进制承载规避 JSON 浮点文本的精度/格式歧义,保证跨平台逐字节确定
+- 分桶 = FNV-1a(条目全路径) % 64,与 indexshard 同构分片;桶键是路径(向量项的寻址主体是笔记),indexshard 的桶键是词元
+- `vecroot`(根):`{kind, model, dim, shards[64]}`(桶号下标,空桶空串,照 indexroot 范本);root 的 model/dim 是 fsck 一致性基准
+- `snapshot.vec`(可选,`omitempty`)指向 vecroot;无向量快照编码逐字节不变
+
+**Embedder 契约(internal/embed)**:`Model()/Dim()/Embed(ctx, texts) ([]vector, error)`;Ollama 适配器 POST `{KB_EMBED_URL|http://127.0.0.1:11434}/api/embed`,请求 `{"model": KB_EMBED_MODEL, "input": [texts]}`,读 `embeddings` 数组(批量语义:每输入串一维、顺序一致——字段名与批量语义经官方文档 docs/api.md 核实并注释于代码);HTTP 超时 30s;**KB_EMBED_MODEL 未设置 = 向量功能整体关闭,入口给可行动报错,绝不静默跳过**。
+
+**重建路径**:`kb index rebuild --embed`——逐条笔记(标题+空行+正文)嵌入、按桶聚合写分片与根、快照带 vec 落库(tree 未变故结构共享,BM25 索引地址沿用);嵌入失败响亮中止、分支指针不动(对象幂等可重试)。普通内容提交不带 vec(向量仅描述重建时刻的库),重跑 rebuild --embed 恢复;普通 `kb index rebuild` 反向沿用头快照 vec。**向量重建是显式操作**,不进写热路径。
+
+**运维配套**:fsck 校验分片 model/dim 与根一致、items 路径存在于对应快照(缺失=fail;无 vec 快照跳过不报);GC 对 vecroot/vecshard 与 indexshard 同规则可达回收(`gc.keep_last` 水位同精简);vecshard/vecroot 走 store 透明 gzip 压缩(仅 SQLite)。
+
+**M6-B 待决(届时评审,不在本批)**:查询端点形态(独立 `kb vsearch` vs 融合进 `kb search`)、Top-K 与阈值、与 BM25 的融合策略、暴力扫描的量级上限判断——量级与三难关系沿用 §7 定论(≤十万条量级精确遍历优于 ANN,勿提前优化)。
+
 ## 8. 部署与配置
 
 ### 8.1 拓扑
@@ -353,6 +387,8 @@ cas-kb/
 | KB_PROJECT | `default` | 项目作用域:note/log/diff/gc/fsck 等命令只作用于该项目;亦可用 -p 按命令覆盖 |
 | KB_UPDATE_REPO | `imeepos/cas-kb` | `kb update` 检查的 GitHub 仓库(owner/name),也可 --repo 按次覆盖 |
 | GITHUB_TOKEN | (无) | 可选;GitHub API 令牌,缓解匿名限流(仅 update 使用,只作请求头) |
+| KB_EMBED_MODEL | (无) | 语义向量嵌入模型名(M6-A,如 nomic-embed-text);**未设置 = 向量功能整体关闭**(`kb index rebuild --embed` 给可行动报错) |
+| KB_EMBED_URL | `http://127.0.0.1:11434` | 嵌入服务地址(Ollama 兼容 /api/embed);向量按 model 版本化入内容,换模型须重跑 rebuild --embed |
 
 指向 102 的示例(PG 后端):`postgres://caskb_app:<密码>@192.168.x.102:5432/caskb?sslmode=disable`。
 安全要求:专用账号 `caskb_app`(只授 caskb 库权限)、密码走 scram-sha-256、内网传输是否启用 TLS 按内网策略定;**凭据一律走环境变量,不入库不入仓**。
