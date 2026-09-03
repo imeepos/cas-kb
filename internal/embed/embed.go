@@ -1,7 +1,8 @@
 // Package embed 提供语义向量嵌入适配器(M6-A,DESIGN §7.3)。
 //
 // 四条红线(负责人裁决,本包不得越界):
-//  1. 不内嵌模型运行时——嵌入一律走外挂 HTTP 服务(Ollama /api/embed);
+//  1. 不内嵌模型运行时——嵌入一律走外挂 HTTP 服务(Ollama /api/embed 或
+//     OpenAI 兼容 /v1/embeddings,KB_EMBED_PROVIDER 选择,M6-C);
 //  2. 不引入向量数据库——向量按内容寻址对象入库(vecshard/vecroot);
 //  3. 向量按 model_id 版本化入内容——model/dim 写进对象内容,跨模型必不同址;
 //  4. 本批次不做检索集成——默认检索仍是 BM25,语义检索面属 M6-B。
@@ -81,6 +82,49 @@ func FromEnv() (*Ollama, error) {
 // NextHybridSearch 是检索面(kb search --hybrid / mode=hybrid)未配置嵌入
 // 服务时的下一步指引,CLI 与 serve 共用一份文案(M6-B)。
 const NextHybridSearch = "4) 对已有库重跑 kb index rebuild --embed 生成向量;5) 重试 kb search --hybrid(或去掉 --hybrid/不传 mode=hybrid,用缺省词法检索)"
+
+// 提供者常量:KB_EMBED_PROVIDER 的合法取值(M6-C)。
+const (
+	// ProviderOllama 走 KB_EMBED_URL 的 /api/embed(缺省,向后兼容)。
+	ProviderOllama = "ollama"
+	// ProviderOpenAI 走 OPENAI_BASE_URL 的 /v1/embeddings(Bearer 鉴权)。
+	ProviderOpenAI = "openai"
+)
+
+// ProviderFromEnv 按 KB_EMBED_PROVIDER 构造当前提供者的 Embedder:
+// ollama(缺省,KB_EMBED_URL/KB_EMBED_MODEL 现有行为零变化)或
+// openai(OPENAI_API_KEY/OPENAI_BASE_URL/KB_EMBED_MODEL,见 openai.go)。
+// 入口(index rebuild --embed / search --hybrid / serve)一律经此分发,
+// 不要直接调用单一提供者的 FromEnv 系列函数。
+func ProviderFromEnv() (Embedder, error) {
+	return ProviderFromEnvWithNext("4) 重试 kb index rebuild --embed")
+}
+
+// ProviderFromEnvWithNext 同 ProviderFromEnv,next 是未配置报错文案中的
+// 下一步动作(与 FromEnvWithNext 同一约定,按调用场景给指引)。
+// 非法取值响亮报错并列出全部合法值;失败时返回 nil Embedder(无 typed-nil 陷阱)。
+func ProviderFromEnvWithNext(next string) (Embedder, error) {
+	switch p := os.Getenv("KB_EMBED_PROVIDER"); p {
+	case "", ProviderOllama:
+		o, err := FromEnvWithNext(next)
+		if err != nil {
+			return nil, err
+		}
+		return o, nil
+	case ProviderOpenAI:
+		oa, err := FromEnvOpenAIWithNext(next)
+		if err != nil {
+			return nil, err
+		}
+		return oa, nil
+	default:
+		return nil, fmt.Errorf(
+			"embed: 未知的 KB_EMBED_PROVIDER=%q——合法值:ollama(缺省)、openai\n"+
+				"如需 OpenAI 兼容端点:export KB_EMBED_PROVIDER=openai,并配置 OPENAI_API_KEY 与 KB_EMBED_MODEL;\n"+
+				"继续用本地 Ollama 则 unset KB_EMBED_PROVIDER(或显式 =ollama)",
+			p)
+	}
+}
 
 // FromEnvWithNext 同 FromEnv,next 是未配置报错文案中的下一步动作——按调用
 // 场景给指引(重建向量:rebuild --embed;混合检索:search --hybrid)。

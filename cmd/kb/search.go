@@ -11,10 +11,10 @@ import (
 )
 
 // embedFromEnv 按环境构造 hybrid 检索用的 Embedder;包级变量便于测试替换。
-// KB_EMBED_MODEL 未设置时返回可行动报错(含配置方法与 rebuild --embed 指引),
-// 绝不静默降级为纯词法。
+// KB_EMBED_PROVIDER 缺省 ollama、可选 openai(M6-C);KB_EMBED_MODEL 未设置时
+// 返回可行动报错(含配置方法与 rebuild --embed 指引),绝不静默降级为纯词法。
 var embedFromEnv = func() (embed.Embedder, error) {
-	return embed.FromEnvWithNext(embed.NextHybridSearch)
+	return embed.ProviderFromEnvWithNext(embed.NextHybridSearch)
 }
 
 // cmdSearch 处理 kb search:全文检索(BM25,结果确定性可复现)。

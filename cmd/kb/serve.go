@@ -42,12 +42,11 @@ func cmdServe(ctx context.Context, args []string) error {
 	}
 	token := f.get("--token", os.Getenv(serveTokenEnv))
 	dsn := effectiveDSN()
-	// 语义检索(M6-B):serve 进程同样读 KB_EMBED_*;未配置不拦启动(其余
-	// 端点零影响),mode=hybrid 请求届时返回 409 + 配置指引。
-	// 注意 emb 必须声明为接口类型:FromEnv 失败返回 nil *Ollama,直接装进
-	// embed.Embedder 会得到「非 nil 接口 + nil 具体值」(typed-nil 陷阱)。
+	// 语义检索(M6-B/M6-C):serve 进程同样读 KB_EMBED_*(KB_EMBED_PROVIDER
+	// 缺省 ollama、可选 openai);未配置不拦启动(其余端点零影响),
+	// mode=hybrid 请求届时返回 409 + 配置指引。
 	var emb embed.Embedder
-	if e, err := embed.FromEnv(); err == nil {
+	if e, err := embed.ProviderFromEnv(); err == nil {
 		emb = e
 	}
 	p, err := startServe(ctx, addr, server.Options{DSN: dsn, Project: projectName(), Branch: branchName(), Token: token, Embedder: emb})
