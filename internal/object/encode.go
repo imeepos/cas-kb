@@ -27,6 +27,10 @@ func Encode(k Kind, v any) ([]byte, error) {
 		return EncodeIndexRoot(v.(*IndexRoot))
 	case KindIndexShard:
 		return EncodeIndexShard(v.(*IndexShard))
+	case KindVecRoot:
+		return EncodeVecRoot(v.(*VecRoot))
+	case KindVecShard:
+		return EncodeVecShard(v.(*VecShard))
 	default:
 		return nil, errKind(k)
 	}
@@ -99,6 +103,27 @@ func EncodeIndexShard(s *IndexShard) ([]byte, error) {
 	out := *s
 	out.Postings = postings
 	return json.Marshal(out)
+}
+
+// EncodeVecShard 编码向量分片:items 按条目全路径排序,保证字节稳定。
+func EncodeVecShard(s *VecShard) ([]byte, error) {
+	if s.Kind != KindVecShard {
+		return nil, errKind(s.Kind)
+	}
+	items := append([]VecItem(nil), s.Items...)
+	sort.SliceStable(items, func(i, j int) bool { return items[i].Path < items[j].Path })
+	cp := *s
+	cp.Items = items
+	return json.Marshal(cp)
+}
+
+// EncodeVecRoot 编码向量索引根:shards 为固定槽位表(桶号下标),
+// 由构建方保证槽位语义,编码原样保留;无内部可变序,天然字节稳定。
+func EncodeVecRoot(vr *VecRoot) ([]byte, error) {
+	if vr.Kind != KindVecRoot {
+		return nil, errKind(vr.Kind)
+	}
+	return json.Marshal(*vr)
 }
 
 // HashOf 计算对象规范编码的地址,供写入前使用。

@@ -1,4 +1,5 @@
-// Package object 定义四类内容寻址对象:blob / note / tree / snapshot,
+// Package object 定义内容寻址对象:blob / note / tree / snapshot /
+// indexroot / indexshard(M4 检索)/ vecroot / vecshard(M6-A 语义向量),
 // 及规范编解码与结构校验。规范编码保证同一逻辑对象在任何机器上逐字节一致。
 package object
 
@@ -20,6 +21,8 @@ const (
 	KindSnapshot   Kind = "snapshot"
 	KindIndexRoot  Kind = "indexroot"  // M4 检索索引根
 	KindIndexShard Kind = "indexshard" // M4 倒排索引分片
+	KindVecRoot    Kind = "vecroot"    // M6-A 语义向量索引根
+	KindVecShard   Kind = "vecshard"   // M6-A 语义向量分片
 )
 
 // SchemaVersion 是当前结构化对象(meta)的格式版本。字段集合变更必须升级此值。
@@ -33,6 +36,8 @@ var validKinds = map[Kind]bool{
 	KindSnapshot:   true,
 	KindIndexRoot:  true,
 	KindIndexShard: true,
+	KindVecRoot:    true,
+	KindVecShard:   true,
 }
 
 // IsValidKind 报告 kind 是否合法。
@@ -98,7 +103,9 @@ type Tree struct {
 
 // Snapshot 是全库一个版本的命名:root tree 地址 + 历史父母 + 时间与消息。
 // Index(M4)指向检索索引根对象;为空表示该快照未建索引(旧数据,可全量重建)。
-// omitempty 保证无索引快照的编码与 M4 之前逐字节一致(对象地址不变)。
+// Vec(M6-A)指向语义向量索引根(vecroot)对象;为空表示该快照未建向量
+// (旧数据或内容变更后未重跑 kb index rebuild --embed,可全量重建)。
+// 两个 omitempty 保证无索引/无向量快照的编码与之前逐字节一致(对象地址不变)。
 type Snapshot struct {
 	Kind    Kind      `json:"kind"`
 	Root    Address   `json:"root"`
@@ -106,6 +113,7 @@ type Snapshot struct {
 	Time    int64     `json:"time"`
 	Message string    `json:"message"`
 	Index   Address   `json:"index,omitempty"`
+	Vec     Address   `json:"vec,omitempty"`
 }
 
 // IndexDoc 是索引文档表的一行:note 地址 → 路径与加权文档长度(BM25 用)。
@@ -137,6 +145,36 @@ type IndexShard struct {
 	Kind     Kind                      `json:"kind"`
 	Bucket   int                       `json:"bucket"`
 	Postings map[string][]IndexPosting `json:"postings"`
+}
+
+// VecItem 是 vecshard 中的一条向量项:笔记全路径 → 嵌入向量。
+// Vec 是全部 float32 分量按 little-endian 拼接后再 base64(StdEncoding)
+// 的单个字符串——二进制承载避免 JSON 浮点文本的精度/格式歧义,
+// 保证跨平台逐字节确定(见 vector.go 的 EncodeVecBase64)。
+type VecItem struct {
+	Path string `json:"path"`
+	Vec  string `json:"vec"`
+}
+
+// VecShard 是一个语义向量分片(M6-A,DESIGN §7.3):固定桶号下全部笔记的
+// 嵌入向量;桶号 = FNV-1a(条目全路径) % 64,与 indexshard 同构分片。
+// Model/Dim 内嵌于内容:同一批向量换模型/维度重建必然产出不同地址
+// (向量按 model_id 版本化入内容,跨模型不共享)。
+type VecShard struct {
+	Kind  Kind      `json:"kind"`
+	Model string    `json:"model"`
+	Dim   int       `json:"dim"`
+	Items []VecItem `json:"items"`
+}
+
+// VecRoot 是语义向量索引根(M6-A):声明生成向量的模型与维度,并按桶号
+// 列出各 vecshard 地址(以桶号为下标,空桶为空串,照 indexroot 范本)。
+// fsck 以 root 的 model/dim 为基准校验各分片一致性。
+type VecRoot struct {
+	Kind   Kind      `json:"kind"`
+	Model  string    `json:"model"`
+	Dim    int       `json:"dim"`
+	Shards []Address `json:"shards"`
 }
 
 // Address 是内容寻址地址的别名,便于对象层引用。

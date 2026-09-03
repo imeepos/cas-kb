@@ -1,7 +1,7 @@
 -- =====================================================================
--- cas-kb SQLite 数据模型规格(schema v5)
+-- cas-kb SQLite 数据模型规格(schema v6)
 -- 本文件是 schema.sql(PostgreSQL 权威规格)的语义镜像,供 SQLite 后端使用:
--- 表/列/约束/默认播种/索引一一对应,库 schema 版本一致(当前 5)。
+-- 表/列/约束/默认播种/索引一一对应,库 schema 版本一致(当前 6)。
 -- 两文件必须同步演进:任何数据模型变更两处一起改,版本号一致。
 -- 与 PostgreSQL 的刻意差异(仅类型与方言,不改语义):
 --   bytea → BLOB;timestamptz+now() → TEXT+strftime(UTC ISO8601);
@@ -15,10 +15,10 @@
 -- 不在对象上冗余标注项目。
 CREATE TABLE IF NOT EXISTS objects (
     addr  text    PRIMARY KEY,            -- 'sha256:<64位小写hex>',内容哈希即主键
-    kind  text    NOT NULL,               -- blob | note | tree | snapshot | indexroot | indexshard
+    kind  text    NOT NULL,               -- blob | note | tree | snapshot | indexroot | indexshard | vecroot | vecshard
     size  integer NOT NULL,               -- data 的字节数
     data  blob    NOT NULL,               -- blob 原始字节;其余为规范 JSON
-    CONSTRAINT objects_kind_check CHECK (kind IN ('blob','note','tree','snapshot','indexroot','indexshard')),
+    CONSTRAINT objects_kind_check CHECK (kind IN ('blob','note','tree','snapshot','indexroot','indexshard','vecroot','vecshard')),
     CONSTRAINT objects_addr_format_check CHECK (
         length(addr) = 71 AND addr GLOB 'sha256:[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]'
     )
@@ -57,7 +57,7 @@ CREATE TABLE IF NOT EXISTS meta (
     value text NOT NULL
 );
 
-INSERT INTO meta (key, value) VALUES ('schema_version', '5')
+INSERT INTO meta (key, value) VALUES ('schema_version', '6')
 ON CONFLICT (key) DO NOTHING;
 
 -- 辅助索引:与 schema.sql 一致(GC 报表与按类型扫描;项目维度列分支)

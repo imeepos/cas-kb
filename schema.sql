@@ -1,5 +1,5 @@
 -- =====================================================================
--- cas-kb PostgreSQL 数据模型规格(schema v5)
+-- cas-kb PostgreSQL 数据模型规格(schema v6)
 -- 目标库:102 主机 Docker PostgreSQL,数据库名 caskb
 -- 本文件是迁移的权威来源:实现侧的迁移逻辑必须与本文件一致
 -- v2 形态:projects 表 + branches 项目维度(复合主键)。
@@ -11,6 +11,10 @@
 -- v5 形态:M4 检索(DESIGN §7)——kind 约束放宽,新增 indexroot/indexshard
 --          两类索引对象;snapshot 对象加可选 index 字段(omitempty,
 --          无索引快照编码逐字节不变)。表结构与 v4 一致,仅 objects.kind 约束变更。
+-- v6 形态:M6-A 向量对象模型(DESIGN §7.3)——kind 约束再放宽,新增
+--          vecroot/vecshard 两类语义向量对象;snapshot 对象加可选 vec 字段
+--          (omitempty,指向 vecroot,无向量快照编码逐字节不变)。
+--          表结构与 v5 一致,仅 objects.kind 约束与 meta 播种版本变更。
 -- 不做存量库自动迁移:版本不符时实现侧拒绝打开;老数据可弃则清库重建。
 -- =====================================================================
 
@@ -19,10 +23,10 @@
 -- 不在对象上冗余标注项目。
 CREATE TABLE IF NOT EXISTS objects (
     addr  text    PRIMARY KEY,            -- 'sha256:<64位小写hex>',内容哈希即主键
-    kind  text    NOT NULL,               -- blob | note | tree | snapshot | indexroot | indexshard
+    kind  text    NOT NULL,               -- blob | note | tree | snapshot | indexroot | indexshard | vecroot | vecshard
     size  integer NOT NULL,               -- data 的字节数
     data  bytea   NOT NULL,               -- blob 原始字节;其余为规范 JSON
-    CONSTRAINT objects_kind_check CHECK (kind IN ('blob','note','tree','snapshot','indexroot','indexshard')),
+    CONSTRAINT objects_kind_check CHECK (kind IN ('blob','note','tree','snapshot','indexroot','indexshard','vecroot','vecshard')),
     CONSTRAINT objects_addr_format_check CHECK (addr ~ '^sha256:[0-9a-f]{64}$')
 );
 
@@ -59,7 +63,7 @@ CREATE TABLE IF NOT EXISTS meta (
     value text NOT NULL
 );
 
-INSERT INTO meta (key, value) VALUES ('schema_version', '5')
+INSERT INTO meta (key, value) VALUES ('schema_version', '6')
 ON CONFLICT (key) DO NOTHING;
 
 -- 辅助索引:GC 报表与按类型扫描(可选,规模小可不建)
