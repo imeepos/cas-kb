@@ -1,5 +1,32 @@
 # 升级指南
 
+## 升级到 Unreleased(schema v6:M6-A 向量对象模型)
+
+本次**有数据模型变更**(库 schema v5 → v6):仅放宽 `objects.kind` 约束(新增 `vecroot`/`vecshard` 两类向量对象)并把 meta 播种值升至 6,表结构与 v5 一致;但按本库纪律**不做存量库自动迁移**——新版对 v5 库会响亮拒绝打开并指引重建:
+
+1. **用旧版 kb 导出备份**(就用你现在装着的 v0.7.x):
+   ```bash
+   kb backup
+   ```
+   产物为 `caskb-v5-backup-<日期>.ckb`。
+2. **让新版接管**:换上新版 kb 后初始化全新库再恢复备份:
+   ```bash
+   kb init
+   kb restore caskb-v5-backup-<日期>.ckb --force
+   ```
+3. **(可选)重建语义向量**(仅在需要向量能力时;须先配置嵌入服务):
+   ```bash
+   export KB_EMBED_MODEL=nomic-embed-text   # ollama pull nomic-embed-text
+   kb index rebuild --embed
+   ```
+   不配置嵌入服务时向量功能整体关闭,其余能力(含默认 BM25 检索)不受影响。
+4. **fsck 验证后重新导出备份**:
+   ```bash
+   kb fsck && kb backup
+   ```
+
+> 提示:M6-A 只落向量对象与重建,**未交付语义检索面**(属 M6-B);默认检索仍是 BM25。
+
 ## 升级到 v0.7.0(库 schema 不变,仍为 v5)
 
 v0.7.0 **没有数据模型变更**,直接替换二进制即可(`kb update --yes`);v0.6.x 库打开即用,`kb fsck` 应通过。新增能力均为可选增量:
